@@ -8,8 +8,7 @@
 (define scribblings '(("scribblings/manual.scrbl" (multi-page))))
 
 ;; 3. Dependencies
-;; 'base' provides the base racket runtime; 'typed-racket-lib' for Typed Racket
-(define deps '("base" "typed-racket-lib"))
+(define deps '("base"))
 
 ;; 4. Build Dependencies
 ;; Tools needed only for docs/tests/etc.

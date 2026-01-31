@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket/base
 
 (provide
     (all-from-out "id-effect.rkt")

@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket
 
 (provide
   (all-from-out "eff-monad.rkt")

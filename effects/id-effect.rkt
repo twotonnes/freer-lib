@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket/base
 
 (provide
   (struct-out id-effect)
@@ -6,8 +6,7 @@
 
 (require "../eff-monad.rkt")
 
-(struct (A) id-effect effect-desc ([info : A]))
+(struct id-effect effect-desc (value) #:transparent)
 
-(: id (-> Any (Eff Any)))
 (define (id v)
-    (effect (id-effect v) (lambda (res) (return res))))
+    (effect (id-effect v) return))

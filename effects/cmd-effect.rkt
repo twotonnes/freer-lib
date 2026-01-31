@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket/base
 
 (provide
   (struct-out cmd-effect)
@@ -7,20 +7,20 @@
   execute-command)
 
 (require
+  racket/bool
+  racket/match
+  racket/port
+  racket/system
   "../eff-monad.rkt"
   "nothing-effect.rkt")
 
-(struct cmd-effect effect-desc ([value : String]) #:transparent)
+(struct cmd-effect effect-desc (value) #:transparent)
 
-(struct cmd-result ([out : String]
-                    [err : String]
-                    [exit-code : Byte]) #:transparent)
+(struct cmd-result (out err exit-code) #:transparent)
 
-(: cmd (-> String (Eff Any)))
 (define (cmd value)
-  (effect (cmd-effect value) (inst return Any)))
+  (effect (cmd-effect value) return))
 
-(: execute-command (-> String (Eff Any)))
 (define (execute-command value)
     (with-handlers ([exn:fail? (lambda (e)
                                 (begin
@@ -43,7 +43,6 @@
             (error "command returned #f as exit code")
             (return (cmd-result out err exit-code)))))
 
-(: find-cmd-path (-> Path-String))
 (define (find-cmd-path)
   (define cmd-name "powershell.exe")
   (define cmd-path (find-executable-path cmd-name))

@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket/base
 
 (provide
   (struct-out nothing-effect)
@@ -9,6 +9,5 @@
   
 (struct nothing-effect effect-desc ())
 
-(: nothing (-> (Eff Any)))
 (define (nothing)
-  (effect (nothing-effect) (inst return Any)))
+  (effect (nothing-effect) return))

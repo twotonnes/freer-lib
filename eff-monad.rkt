@@ -1,35 +1,31 @@
-#lang typed/racket
+#lang racket/base
 
 (provide
   effect-desc
   pure
   effect
-  Eff
   return
   run
   >>=
   do
   with-effect-handlers)
 
+(require racket/match
+         (for-syntax racket/base))
+
 ;; Extensible effect descriptor (currently empty; can hold metadata in subclasses).
 (struct effect-desc () #:transparent)
 
 ;; `pure` wraps a value; `effect` wraps an effect descriptor and a
 ;; continuation that will receive the effect's result.
-(struct (A) pure ([value : A]) #:transparent)
-(struct (A) effect ([description : effect-desc]
-                    [k : (-> Any (Eff A))]) #:transparent)
+(struct pure (value) #:transparent)
+(struct effect (description k) #:transparent)
 
-;; The Eff type is a simple union: either a pure value or an effect.
-(define-type (Eff A) (U (pure A) (effect A)))
-
-(: return (All (A) (-> A (Eff A))))
 (define (return v) (pure v))
 
 ;; Bind sequences computations while preserving effects: if `m` is
 ;; `effect`, create a new `effect` with the same description but a
 ;; continuation that threads the rest of the computation through `f`.
-(: bind (All (A B) (-> (Eff A) (-> A (Eff B)) (Eff B))))
 (define (bind m f)
     (match m
         [(pure v) (f v)]
@@ -38,15 +34,13 @@
 
 ;; Interpreter: run `m` by repeatedly applying `handle` to effects
 ;; until a `pure` value emerges.
-(: run (-> (Eff Any) (-> (effect Any) (Eff Any)) Any))
 (define (run m handle)
     (match m
         [(pure value) value]
         [(effect desc k) (run (handle (effect desc k)) handle)]))
 
 ;; Alias for bind.
-(: >>= (All (A B) (-> (Eff A) (-> A (Eff B)) (Eff B))))
-(define (>>= m f) (bind m f))
+(define >>= bind)
 
 ;; Do-notation: syntactic sugar for monadic sequencing.
 ;; All sequences expand to nested `>>=` calls, threading results through.
@@ -55,10 +49,10 @@
         ;; Binding case: (do [a <- m] rest ...)
         ;; Expands to (>>= m (lambda (a) (do rest ...)))
         ;; This allows sequencing with named results.
-        [(_ [a : type <- m] rest ...)
-         #'(>>= m (lambda ([a : type]) (do rest ...)))]
-        [(_ [a <- m] rest ...)
-         #'(>>= m (lambda (a) (do rest ...)))]
+        [(_ [clause <- m] rest ...)
+         #'(>>= m
+                (lambda (v)
+                    (match v [clause (do rest ...)])))]
 
         ;; Base case: (do m)
         ;; A single expression just returns itself; no sequencing needed.
@@ -89,7 +83,7 @@
                                      #'[(effect pattern k) (>>= (begin body ...) k)]]))
                             (syntax->list #'(clause ...)))])
             #'(run (begin expr ...)
-                   (lambda #:forall (A) ([eff : (Eff A)])
+                   (lambda (eff)
                      (match eff
                        match-clause ...
                        ;; No handler matched: error with effect description.
