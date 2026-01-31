@@ -21,3 +21,5 @@ The @racketmodname[effect-lib] library provides a typed, extensible effects mona
 @include-section{sections/types-and-structures/main.scrbl}
 @include-section{sections/monadic-operations/main.scrbl}
 @include-section{sections/syntactic-sugar/main.scrbl}
+@include-section{sections/built-in-effects/main.scrbl}
+@include-section{sections/defining-effects/main.scrbl}

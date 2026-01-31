@@ -1,7 +1,7 @@
 #lang typed/racket
 
 (provide
-  nothing-effect
+  (struct-out nothing-effect)
   nothing)
 
 (require

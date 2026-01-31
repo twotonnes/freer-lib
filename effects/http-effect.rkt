@@ -1,7 +1,7 @@
 #lang typed/racket
 
 (provide
-  http-effect
+  (struct-out http-effect)
   http-get
   http-post
   http-put

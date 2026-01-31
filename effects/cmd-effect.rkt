@@ -1,7 +1,8 @@
 #lang typed/racket
 
 (provide
-  cmd-effect
+  (struct-out cmd-effect)
+  (struct-out cmd-result)
   cmd
   execute-command)
 
