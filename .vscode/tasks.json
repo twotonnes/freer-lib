@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Make",
+      "type": "shell",
+      "command": "raco",
+      "args": ["make", "main.rkt"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup",
+      "type": "shell",
+      "command": "raco",
+      "args": ["setup", "effect-lib"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-Command", "Get-ChildItem -Path . -Filter 'compiled' -Directory -Recurse | Remove-Item -Recurse -Force"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docs",
+      "type": "shell",
+      "command": "raco",
+      "args": ["docs", "effect-lib"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test",
+      "type": "shell",
+      "command": "raco",
+      "args": ["test", "."],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
