@@ -15,7 +15,7 @@
 
 This module provides effects for performing HTTP network requests.
 
-@defstruct[(http-effect effect-desc) ([url url?]
+@defstruct[http-effect ([url url?]
                                       [method symbol?]
                                       [headers (listof string?)]
                                       [body (or/c #f bytes? string?)])

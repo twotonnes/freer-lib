@@ -12,21 +12,11 @@
 
 The core API defines the structure of effectful computations and the machinery to execute them.
 
-@defstruct[effect-desc () #:transparent]{
-  The base structure for all effect descriptions. Users should define specific effects by creating subtypes of @racket[effect-desc]. These descriptors hold the metadata required by a handler to fulfill an effect request.
-
-  @examples[#:eval effect-lib-eval
-    ;; Defining a specific effect descriptor for a key-value store lookup
-    (struct kv-get effect-desc (key) #:transparent)
-    (kv-get "username")
-  ]
-}
-
 @defstruct[pure ([value any/c]) #:transparent]{
   Represents a computation that has completed successfully with a result @racket[value]. This is the base case of the free monad.
 }
 
-@defstruct[effect ([description effect-desc?]
+@defstruct[effect ([description any/c]
                    [k (-> any/c any/c)]) #:transparent]{
   Represents a suspended computation waiting on an effect.
   @itemlist[
@@ -51,7 +41,7 @@ The core API defines the structure of effectful computations and the machinery t
   If @racket[m] is a @racket[pure] value, @racket[f] is applied immediately. If @racket[m] is an @racket[effect], the binding is pushed down into the continuation @racket[k], creating a new computation that pauses for the same effect but runs @racket[f] after the original continuation completes.
 
   @examples[#:eval effect-lib-eval
-    (struct increment effect-desc ())
+    (struct increment ())
     
     ;; Manually chain a pure value into an effect
     (>>= (return 10)
@@ -68,7 +58,7 @@ The core API defines the structure of effectful computations and the machinery t
   When @racket[run] encounters a @racket[pure] value, it returns the unwrapped value. When it encounters an @racket[effect], it passes the effect object to @racket[handle]. The handler is expected to resume the computation (usually by invoking the continuation inside the effect), returning a new state that @racket[run] will continue to process.
 
   @examples[#:eval effect-lib-eval
-    (struct read-env effect-desc (var-name))
+    (struct read-env (var-name))
     
     ;; A computation that asks for an environment variable
     (define my-computation

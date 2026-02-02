@@ -1,7 +1,6 @@
 #lang racket/base
 
 (provide
-  effect-desc
   pure
   effect
   return
@@ -12,9 +11,6 @@
 
 (require racket/match
          (for-syntax racket/base))
-
-;; Extensible effect descriptor (currently empty; can hold metadata in subclasses).
-(struct effect-desc () #:transparent)
 
 ;; `pure` wraps a value; `effect` wraps an effect descriptor and a
 ;; continuation that will receive the effect's result.

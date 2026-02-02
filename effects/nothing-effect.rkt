@@ -7,7 +7,7 @@
 (require
   "../eff-monad.rkt")
   
-(struct nothing-effect effect-desc ())
+(struct nothing-effect ())
 
 (define (nothing)
   (effect (nothing-effect) return))

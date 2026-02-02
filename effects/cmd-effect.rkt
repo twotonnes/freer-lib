@@ -12,11 +12,11 @@
   racket/match
   racket/port
   racket/system
-  racket/exn
+  racket/exn 
   "../eff-monad.rkt"
   "nothing-effect.rkt")
 
-(struct cmd-effect effect-desc (value) #:transparent)
+(struct cmd-effect (value) #:transparent)
 
 (struct cmd-result (out err exit-code) #:transparent)
 (struct cmd-failure (err) #:transparent)
