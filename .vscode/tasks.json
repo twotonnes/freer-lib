@@ -34,7 +34,7 @@
       "label": "Build Docs",
       "type": "shell",
       "command": "raco",
-      "args": ["scribble", "--htmls", "+m", "--dest", "docs", "--redirect-main", "http://docs.racket-lang.org/", "scribblings/manual.scrbl"],
+      "args": ["scribble", "--htmls", "+m", "--dest-name", "docs", "--redirect-main", "http://docs.racket-lang.org/", "scribblings/manual.scrbl"],
       "group": "build",
       "problemMatcher": []
     },
