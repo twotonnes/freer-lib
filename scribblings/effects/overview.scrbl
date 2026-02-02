@@ -20,7 +20,7 @@ To understand how these standard effects work, consider the simplest one: the Id
 
 @defmodule[effect-lib/effects/id-effect]
 
-@defstruct[(id-effect) ([value any/c]) #:transparent]{
+@defstruct[(id-effect effect-desc) ([value any/c]) #:transparent]{
   A descriptor that simply holds a value.
 }
 

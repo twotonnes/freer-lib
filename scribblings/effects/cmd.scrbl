@@ -14,7 +14,7 @@
 
 This module provides effects for executing shell commands and capturing their output.
 
-@defstruct[(cmd-effect) ([command string?]) #:transparent]{
+@defstruct[(cmd-effect effect-desc) ([command string?]) #:transparent]{
   An effect descriptor for running a system command.
 }
 
@@ -29,7 +29,7 @@ This module provides effects for executing shell commands and capturing their ou
   ]
 }
 
-@defstruct[(cmd-failure) ([err string?]) #:transparent]{
+@defstruct[(cmd-failure effect-desc) ([err string?]) #:transparent]{
   An effect descriptor representing a system failure that occurred while attempting to execute a command (e.g., executable not found, permission denied).
 }
 

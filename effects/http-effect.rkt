@@ -15,7 +15,7 @@
     racket/port
     "../eff-monad.rkt")
   
-(struct http-effect (url method headers body) #:transparent)
+(struct http-effect effect-desc (url method headers body) #:transparent)
 
 (define (http-get url headers)
   (effect (http-effect (string->url url) 'GET headers #f) return))

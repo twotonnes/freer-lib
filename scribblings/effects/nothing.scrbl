@@ -12,7 +12,7 @@
 
 @defmodule[effect-lib/effects/nothing-effect]
 
-@defstruct[(nothing-effect) () #:transparent]{
+@defstruct[(nothing-effect effect-desc) () #:transparent]{
   An effect descriptor representing the absence of a value or a specific "no-op" signal. 
 }
 

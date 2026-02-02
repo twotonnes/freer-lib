@@ -26,7 +26,7 @@ To simplify the composition of effects and the definition of handlers, the libra
 
   @examples[#:eval effect-lib-eval
     ;; Define a basic "Ask" effect
-    (struct ask (question))
+    (struct ask effect-desc (question))
     (define (ask-user q) (effect (ask q) return))
 
     ;; A computation that asks two questions and combines the results
@@ -61,8 +61,8 @@ To simplify the composition of effects and the definition of handlers, the libra
   If an effect is raised that does not match any clause, an error is raised.
 
   @examples[#:eval effect-lib-eval
-    (struct log (message))
-    (struct crash (reason))
+    (struct log effect-desc (message))
+    (struct crash effect-desc (reason))
 
     (define (log-msg m) (effect (log m) return))
     (define (fail r) (effect (crash r) return))
