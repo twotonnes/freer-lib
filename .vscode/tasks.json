@@ -4,16 +4,16 @@
     {
       "label": "Make",
       "type": "shell",
-      "command": "raco",
-      "args": ["make", "main.rkt"],
+      "command": "make",
+      "args": ["compile"],
       "group": "build",
       "problemMatcher": []
     },
     {
       "label": "Install as Linked Package",
       "type": "shell",
-      "command": "raco",
-      "args": ["pkg", "install", "--auto", "--link"],
+      "command": "make",
+      "args": ["install"],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -23,26 +23,27 @@
     {
       "label": "Clean",
       "type": "shell",
-      "command": "powershell",
-      "args": ["-Command",
-      "Get-ChildItem -Path . -Filter 'compiled' -Directory -Recurse | Remove-Item -Recurse -Force;",
-      "Get-ChildItem -Path . -Filter 'doc' -Directory | Remove-Item -Recurse -Force"],
-      "group": "build",
+      "command": "make",
+      "args": ["clean"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "problemMatcher": []
     },
     {
       "label": "Build Docs",
       "type": "shell",
-      "command": "raco",
-      "args": ["scribble", "--htmls", "+m", "--dest-name", "docs", "--redirect-main", "http://docs.racket-lang.org/", "scribblings/manual.scrbl"],
+      "command": "make",
+      "args": ["docs"],
       "group": "build",
       "problemMatcher": []
     },
     {
       "label": "Test All",
       "type": "shell",
-      "command": "raco",
-      "args": ["test", "."],
+      "command": "make",
+      "args": ["test"],
       "group": {
         "kind": "test",
         "isDefault": true
