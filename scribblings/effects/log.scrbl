@@ -23,20 +23,20 @@ This module provides effects for logging messages at different severity levels.
   ]
 }
 
-@defproc[(log-debug [message string?]) free?]{
-  Creates a logging effect that logs a @racket[message] at the DEBUG level.
+@defproc[(log-debug [message string?] [args any/c] ...) free?]{
+  Creates a logging effect that logs a @racket[message] at the DEBUG level. Supports format strings with additional arguments for formatting.
 
   @examples[#:eval log-eval
     (define (process-data)
       (do [_ <- (log-debug "Starting data processing")]
           [result <- (return 42)]
-          [_ <- (log-debug (format "Processing complete with result: ~a" result))]
+          [_ <- (log-debug "Processing complete with result: ~a" result)]
           (return result)))
   ]
 }
 
-@defproc[(log-info [message string?]) free?]{
-  Creates a logging effect that logs a @racket[message] at the INFO level.
+@defproc[(log-info [message string?] [args any/c] ...) free?]{
+  Creates a logging effect that logs a @racket[message] at the INFO level. Supports format strings with additional arguments for formatting.
 
   @examples[#:eval log-eval
     (define (startup)
@@ -45,8 +45,8 @@ This module provides effects for logging messages at different severity levels.
   ]
 }
 
-@defproc[(log-error [message string?]) free?]{
-  Creates a logging effect that logs a @racket[message] at the ERROR level.
+@defproc[(log-error [message string?] [args any/c] ...) free?]{
+  Creates a logging effect that logs a @racket[message] at the ERROR level. Supports format strings with additional arguments for formatting.
 
   @examples[#:eval log-eval
     (define (handle-failure)
@@ -56,11 +56,11 @@ This module provides effects for logging messages at different severity levels.
 }
 
 @defproc[(default-log-display [eff log-effect?]) void?]{
-  The default handler for displaying log messages. Routes ERROR level messages to @racket[current-error-port] and other levels to @racket[current-output-port].
+  The default handler for displaying log messages. Routes ERROR level messages to @racket[current-error-port] and other levels to @racket[current-output-port]. Automatically formats messages using @racket[default-log-format] and flushes the output.
 }
 
 @defproc[(default-log-format [eff log-effect?]) string?]{
-  The default formatter for log messages. Formats the log entry with the current date, log level, and message as a string.
+  The default formatter for log messages. Formats the log entry with the current date (in ISO 8601 format), log level, and message as a string.
 }
 
 @defproc[(write-log [eff log-effect?] [display-proc (-> log-effect? void?) default-log-display] [format-proc (-> log-effect? string?) default-log-format]) free?]{
@@ -93,11 +93,11 @@ This module provides effects for logging messages at different severity levels.
 @bold{Error Handling}: The log effect is typically used for observability and diagnostics. It does not produce errors itself, but can be combined with other effects. When logging is not available (e.g., in a testing environment), you can write a handler that ignores log messages or collects them for inspection.
 
 @examples[#:eval log-eval
-  ;; Example handler that prints logs to stdout with simple formatting
+  ;; Example handler that prints logs to stdout with timestamp
   (define (run-with-logging computation)
     (run computation
          (lambda (eff k)
            (match eff
              [(log-effect level msg)
-              (run (write-log (format "[~a] ~a" level msg)) k)]))))
+              (k (write-log eff))]))))
 ]
