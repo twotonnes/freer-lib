@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Make",
+      "label": "Compile",
       "type": "shell",
       "command": "make",
       "args": ["compile"],
@@ -57,6 +57,14 @@
       "args": ["test", "${file}"],
       "group": "test",
       "problemMatcher": []
-    }
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "make",
+      "args": ["build"],
+      "group": "build",
+      "problemMatcher": []
+    },
   ]
 }
