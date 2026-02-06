@@ -37,9 +37,10 @@ When you use @racket[id], you are effectively pausing the computation to hand a 
         (return (+ x y))))
 
   ;; A handler that simply unwraps the ID and returns the value
-  (with-impure-handlers
-    ([(id-effect v) (return v)])
-    computation)
+  (run computation
+       (lambda (eff k)
+          (match eff
+            [(id-effect v) (k v)])))
 ]
 
 @include-section["cmd.scrbl"]
