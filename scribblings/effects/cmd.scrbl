@@ -2,7 +2,7 @@
 
 @(require
   scribble/eval
-  (for-label (rename-in racket [do r:do])
+  (for-label (rename-in racket [do r:do] [log-info r:log-info] [log-debug r:log-debug] [log-error r:log-error])
              freer-lib))
 
 @(define cmd-eval (make-base-eval))
