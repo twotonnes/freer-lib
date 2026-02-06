@@ -10,9 +10,9 @@
 
 @title{Standard Effects}
 
-While the core library allows you to define any effect you wish, this module provides a set of common, pre-defined effects for everyday tasks like Input/Output, HTTP requests, system commands, and error handling.
+While the core library allows you to define any effect you wish, this module provides a set of common, pre-defined effects for everyday tasks like Input/Output, HTTP requests, system commands, error handling, and logging.
 
-These effects come with companion **default handlers**. You are not required to use these handlers—you can write your own interpreters for @racket[cmd-effect], @racket[http-effect], or @racket[fail-effect] if you wish to mock them for testing—but the default handlers provide production-ready implementations.
+These effects come with companion **default handlers**. You are not required to use these handlers—you can write your own interpreters for @racket[cmd-effect], @racket[http-effect], @racket[fail-effect], or @racket[log-effect] if you wish to mock them for testing—but the default handlers provide production-ready implementations.
 
 @section{Understanding Basic Effects}
 
@@ -46,3 +46,4 @@ When you use @racket[id], you are effectively pausing the computation to hand a 
 @include-section["http.scrbl"]
 @include-section["nothing.scrbl"]
 @include-section["fail.scrbl"]
+@include-section["log.scrbl"]
