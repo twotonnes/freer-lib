@@ -39,7 +39,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Test",
+      "label": "Test All",
       "type": "shell",
       "command": "raco",
       "args": ["test", "."],
@@ -47,6 +47,14 @@
         "kind": "test",
         "isDefault": true
       },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Current File",
+      "type": "shell",
+      "command": "raco",
+      "args": ["test", "${file}"],
+      "group": "test",
       "problemMatcher": []
     }
   ]

@@ -6,7 +6,7 @@
              freer-lib))
 
 @(define log-eval (make-base-eval))
-@interaction-eval[#:eval log-eval (require freer-lib freer-lib/effects/log-effect racket/match)]
+@interaction-eval[#:eval log-eval (require freer-lib freer-lib/effects/log-effect freer-lib/effects/fail-effect racket/match)]
 
 @title{Logging}
 
