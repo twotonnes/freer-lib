@@ -48,3 +48,4 @@ When you use @racket[id], you are effectively pausing the computation to hand a 
 @include-section["abort-effect.scrbl"]
 @include-section["log.scrbl"]
 @include-section["file-system-effect.scrbl"]
+@include-section["try-catch.scrbl"]
