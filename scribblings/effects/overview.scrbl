@@ -32,7 +32,7 @@ When you use @racket[id], you are effectively pausing the computation to hand a 
 
 @examples[#:eval std-eval
   (define computation
-    (do [x <- (id 10)]
+    (do-m [x <- (id 10)]
         [y <- (id 20)]
         (return (+ x y))))
 

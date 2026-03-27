@@ -23,7 +23,7 @@ The try-catch pattern provides a mechanism for handling short-circuit failures i
 
   @examples[#:eval try-catch-eval
     (define computation
-      (do [x <- (return 10)]
+      (do-m [x <- (return 10)]
           (if (> x 20)
               (return x)
               (return #f))))
@@ -43,7 +43,7 @@ The try-catch pattern provides a mechanism for handling short-circuit failures i
 
   @examples[#:eval try-catch-eval
     (define failing-computation
-      (do [a <- (return 1)]
+      (do-m [a <- (return 1)]
           [b <- (try (return #f) (return 100))]
           (return (+ a b))))
 
@@ -70,7 +70,7 @@ The typical pattern for using try-catch is:
         (return #f)))
 
   (define computation
-    (do [a <- (check-positive 5)]
+    (do-m [a <- (check-positive 5)]
         [b <- (try (check-positive -3) (return 0))]
         [c <- (check-positive 10)]
         (return (+ a b c))))

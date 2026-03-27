@@ -26,7 +26,7 @@ The fail effect is often used in conjunction with error handling in other effect
 
 @examples[#:eval std-eval
   (define computation
-    (do [x <- (id 10)]
+    (do-m [x <- (id 10)]
         (if (< x 20)
             (fail "Value is too small")
             (return x))))

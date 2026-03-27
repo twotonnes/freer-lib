@@ -28,7 +28,7 @@ This module provides effects for performing HTTP network requests.
 
   @examples[#:eval http-eval
     (define (fetch-home)
-      (do [(list status headers body) <- (http-get "https://racket-lang.org" '())]
+      (do-m [(list status headers body) <- (http-get "https://racket-lang.org" '())]
           (return (format "Status: ~a, Body length: ~a" 
                           status 
                           (string-length body)))))

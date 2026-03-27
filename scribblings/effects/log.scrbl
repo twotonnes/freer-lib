@@ -28,7 +28,7 @@ This module provides effects for logging messages at different severity levels.
 
   @examples[#:eval log-eval
     (define (process-data)
-      (do [_ <- (log-dbg "Starting data processing")]
+      (do-m [_ <- (log-dbg "Starting data processing")]
           [result <- (return 42)]
           [_ <- (log-dbg "Processing complete with result: ~a" result)]
           (return result)))
@@ -40,7 +40,7 @@ This module provides effects for logging messages at different severity levels.
 
   @examples[#:eval log-eval
     (define (startup)
-      (do [_ <- (log-inf "Application started")]
+      (do-m [_ <- (log-inf "Application started")]
           (return (void))))
   ]
 }
@@ -50,7 +50,7 @@ This module provides effects for logging messages at different severity levels.
 
   @examples[#:eval log-eval
     (define (handle-failure)
-      (do [_ <- (log-err "Critical failure occurred")]
+      (do-m [_ <- (log-err "Critical failure occurred")]
           (return (void))))
   ]
 }

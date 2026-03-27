@@ -9,7 +9,7 @@
   perform
   run
   >>=
-  do)
+  do-m)
 
 
 (require racket/match
@@ -141,53 +141,53 @@
 ;; do notation
 ;; ============================================================
 
-(define-syntax (do stx)
+(define-syntax (do-m stx)
     (syntax-case stx (<-)
-        ;; Binding case: (do [a <- m] rest ...)
-        ;; Expands to (>>= m (lambda (a) (do rest ...)))
+        ;; Binding case: (do-m [a <- m] rest ...)
+        ;; Expands to (>>= m (lambda (a) (do-m rest ...)))
         ;; This allows sequencing with named results.
         [(_ [clause <- m] rest ...)
          #'(>>= m
                 (lambda (v)
-                    (match v [clause (do rest ...)])))]
+                    (match v [clause (do-m rest ...)])))]
 
-        ;; Base case: (do m)
+        ;; Base case: (do-m m)
         ;; A single expression just returns itself; no sequencing needed.
         [(_ m)
          #'m]
         
-        ;; Sequencing case: (do m1 m2 ...)
+        ;; Sequencing case: (do-m m1 m2 ...)
         ;; Evaluates m1 but discards its result (bound to _), then continues.
-        ;; Expands to (>>= m1 (lambda (_) (do m2 ...)))
+        ;; Expands to (>>= m1 (lambda (_) (do-m m2 ...)))
         [(_ m rest ...)
-         #'(>>= m (lambda (_) (do rest ...)))]))
+         #'(>>= m (lambda (_) (do-m rest ...)))]))
 
 (module+ test
   (test-case "do with single expression returns it"
-    (check-equal? (do (return 7)) (pure 7)))
+    (check-equal? (do-m (return 7)) (pure 7)))
   
   (test-case "do sequences computations with binding"
     (define result
-      (do [x <- (return 3)]
+      (do-m [x <- (return 3)]
           [y <- (return 4)]
           (return (+ x y))))
     (check-equal? result (pure 7)))
   
   (test-case "do sequences without binding (discarding results)"
     (define result
-      (do (return 'ignored)
+      (do-m (return 'ignored)
           (return 42)))
     (check-equal? result (pure 42)))
   
   (test-case "do with pattern matching in binding"
     (define result
-      (do [(list a b) <- (return (list 10 20))]
+      (do-m [(list a b) <- (return (list 10 20))]
           (return (+ a b))))
     (check-equal? result (pure 30)))
   
   (test-case "do with effects"
     (define result
-      (run (do [x <- (perform 'get)]
+      (run (do-m [x <- (perform 'get)]
                (return (* x 2)))
            (lambda (eff k)
              (match eff

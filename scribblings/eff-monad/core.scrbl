@@ -2,7 +2,7 @@
 
 @(require
   scribble/eval
-  (for-label (rename-in racket [do r:do])
+  (for-label (rename-in racket [do r:do] [set r:set])
              freer-lib))
 
 @(define freer-lib-eval (make-base-eval))
@@ -81,7 +81,7 @@ The core API defines the structure of effectful computations and the machinery t
     
     ;; A computation that asks for an environment variable
     (define my-computation
-      (do [path <- (perform (read-env "HOME"))]
+      (do-m [path <- (perform (read-env "HOME"))]
           (return (string-append "Home is: " path))))
     
     ;; Running the computation with a handler

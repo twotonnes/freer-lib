@@ -23,7 +23,7 @@ The abort effect allows computations to signal immediate termination without pro
 
   @examples[#:eval abort-eval
     (define (conditional-abort x)
-      (do [_ <- (if (negative? x)
+      (do-m [_ <- (if (negative? x)
                     (abort)
                     (return (void)))]
           (return (abs x))))

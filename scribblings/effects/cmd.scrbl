@@ -34,7 +34,7 @@ This module provides effects for executing shell commands and capturing their ou
 
   @examples[#:eval cmd-eval
     (define (check-status)
-      (do [res <- (cmd "echo \"checking git status\"")]
+      (do-m [res <- (cmd "echo \"checking git status\"")]
           (if (zero? (cmd-result-exit-code res))
               (return (cmd-result-out res))
               (return "Git check failed"))))

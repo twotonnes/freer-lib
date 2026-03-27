@@ -14,7 +14,7 @@
 
 (define/contract (try computation fallback)
     (-> free? free? free?)
-    (do
+    (do-m
         [value <- computation]
         (if (false? value)
             (perform (failure-effect fallback))
@@ -51,7 +51,7 @@
     (-> any/c (-> any/c free?) free?)
     (match eff
         [(failure-effect fallback) (return fallback)]
-        [_ (return (do
+        [_ (return (do-m
                     [value <- (perform eff)]
                     (catch (k value))))]))
 
@@ -76,7 +76,7 @@
         (define kv (make-hash))
         (define result
             (run (catch
-                    (do
+                    (do-m
                         [a <- (id 3)]
                         [b <- (try failed-computation (return 'right-fallback))]
                         [c <- (id 5)]
@@ -94,7 +94,7 @@
         (define kv (make-hash))
         (define result
             (run (catch
-                    (do
+                    (do-m
                         [a <- (try (id 1) (return -1))]
                         [b <- (try (id 2) (return -2))]
                         [c <- (try (id 3) (return -3))]

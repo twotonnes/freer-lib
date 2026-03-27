@@ -83,7 +83,7 @@ This module provides effects for performing file system operations such as readi
     
     (code:comment "Use the effect in a computation")
     (define (read-config-file)
-      (do [content <- (read-file "config.txt")]
+      (do-m [content <- (read-file "config.txt")]
           (return (bytes->string/utf-8 content))))
     
     (code:comment "Run with mock handler")
@@ -105,7 +105,7 @@ This module provides effects for performing file system operations such as readi
         [_ (error "unhandled effect")]))
     
     (define (save-document content)
-      (do [_ <- (write-file "document.txt" 
+      (do-m [_ <- (write-file "document.txt" 
                             (string->bytes/utf-8 content)
                             'truncate)]
           (return "Document saved!")))
@@ -125,7 +125,7 @@ This module provides effects for performing file system operations such as readi
         [_ (error "unhandled effect")]))
     
     (define (setup-workspace dir-name)
-      (do [_ <- (create-folder (string-append "projects/" dir-name "/src"))]
+      (do-m [_ <- (create-folder (string-append "projects/" dir-name "/src"))]
           [_ <- (create-folder (string-append "projects/" dir-name "/tests"))]
           (return (string-append "Workspace '" dir-name "' created"))))
     
@@ -154,7 +154,7 @@ This module provides effects for performing file system operations such as readi
         [_ (error "unhandled effect")]))
     
     (define (handle-path path)
-      (do [type <- (check-path path)]
+      (do-m [type <- (check-path path)]
           (match type
             ['file (return "It's a file")]
             ['directory (return "It's a directory")]
@@ -178,7 +178,7 @@ This module provides effects for performing file system operations such as readi
         [_ (error "unhandled effect")]))
     
     (define (cleanup)
-      (do [_ <- (delete-path "temp.txt")]
+      (do-m [_ <- (delete-path "temp.txt")]
           [_ <- (delete-path "old-data")]
           (return "Cleanup complete")))
     
@@ -223,9 +223,9 @@ This module provides effects for performing file system operations such as readi
       [_ (error "unhandled effect")]))
   
   (define (copy-file-if-exists src dst)
-    (do [src-type <- (check-path src)]
+    (do-m [src-type <- (check-path src)]
         (if (eq? src-type 'file)
-            (do [content <- (read-file src)]
+            (do-m [content <- (read-file src)]
                 [_ <- (write-file dst content 'truncate)]
                 (return "File copied successfully"))
             (return "Source file does not exist"))))

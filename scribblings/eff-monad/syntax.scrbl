@@ -12,7 +12,7 @@
 
 To simplify the composition of impures, the library provides standard syntactic sugar.
 
-@defform[(do clause ...)
+@defform[(do-m clause ...)
          #:grammar ([clause (code:line [id <- expr])
                             (code:line expr)])]{
   A monadic sequencing macro similar to Haskell's do-notation. It expands into nested calls to @racket[>>=].
@@ -31,7 +31,7 @@ To simplify the composition of impures, the library provides standard syntactic 
 
     ;; A computation that asks two questions and combines the results
     (define survey-computation
-      (do [name <- (ask-user "What is your name?")]
+      (do-m [name <- (ask-user "What is your name?")]
           [age  <- (ask-user "What is your age?")]
           (return (format "~a is ~a years old." name age))))
     
