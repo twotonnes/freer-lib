@@ -2,7 +2,7 @@
 
 @(require
   scribble/eval
-  (for-label (rename-in racket [do r:do])
+  (for-label (rename-in racket [do r:do] [set r:set])
              freer-lib))
 
 @title{Algebraic Effects}
@@ -16,3 +16,4 @@ This library implements a lightweight system for extensible algebraic effects. I
 @include-section["eff-monad/core.scrbl"]
 @include-section["eff-monad/syntax.scrbl"]
 @include-section["effects/overview.scrbl"]
+@include-section["lens/overview.scrbl"]
