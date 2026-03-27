@@ -27,9 +27,9 @@ with all its generated lenses.
 
     (define alice (person "Alice" 30 "alice@example.com"))
 
-    (view person->name  alice)
+    (view-l person->name  alice)
     (set-l  person->age   31 alice)
-    (over person->email string-upcase alice)
+    (over-l person->email string-upcase alice)
   ]
 
   Lenses compose naturally with @racket[lens-compose] for working inside nested
@@ -42,7 +42,7 @@ with all its generated lenses.
 
     (define team-lead-name (lens-compose person->name team->lead))
 
-    (view team-lead-name t)
+    (view-l team-lead-name t)
     (set-l  team-lead-name "Bob" t)
   ]
 }
@@ -59,6 +59,6 @@ with all its generated lenses.
 
     (require (submod "." persons))
 
-    (view person->age (person "Carol" 25))
+    (view-l person->age (person "Carol" 25))
   ]
 }

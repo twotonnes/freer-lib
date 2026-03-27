@@ -34,11 +34,11 @@ data structures.
   ]
 }
 
-@defproc[(view [l lens?] [structure any/c]) any/c]{
+@defproc[(view-l [l lens?] [structure any/c]) any/c]{
   Extracts the focused value from @racket[structure] using the lens @racket[l].
 
   @examples[#:eval lens-eval
-    (view first-lens '(10 20 30))
+    (view-l first-lens '(10 20 30))
   ]
 }
 
@@ -66,13 +66,13 @@ data structures.
   ]
 }
 
-@defproc[(over [l lens?] [update-fn procedure?] [structure any/c]) any/c]{
+@defproc[(over-l [l lens?] [update-fn procedure?] [structure any/c]) any/c]{
   Applies @racket[update-fn] to the focused value inside @racket[structure] and
   returns the updated structure. Equivalent to
-  @racket[(set-l l (update-fn (view l structure)) structure)].
+  @racket[(set-l l (update-fn (view-l l structure)) structure)].
 
   @examples[#:eval lens-eval
-    (over first-lens add1 '(10 20 30))
+    (over-l first-lens add1 '(10 20 30))
   ]
 }
 
@@ -87,7 +87,7 @@ data structures.
     (define inner-first-of-second
       (lens-compose first-lens second-lens))
 
-    (view inner-first-of-second nested)
+    (view-l inner-first-of-second nested)
     (set-l  inner-first-of-second 99 nested)
   ]
 }

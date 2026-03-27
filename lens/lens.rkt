@@ -2,10 +2,10 @@
 
 (provide
  (struct-out lens)
- view
+ view-l
  set-l
  set-l*
- over
+ over-l
  lens-compose)
 
 (require
@@ -19,14 +19,14 @@
   (define right (lens second (lambda (new-value structure)
                                (list-set structure 1 new-value)))))
 
-(define (view l structure)
+(define (view-l l structure)
   ((lens-get l) structure))
 (module+ test
   (require rackunit)
   (test-case "view - extract values correctly"
              (define structure (list 1 2))
-             (check-equal? (view left structure) 1)
-             (check-equal? (view right structure) 2)))
+             (check-equal? (view-l left structure) 1)
+             (check-equal? (view-l right structure) 2)))
 
 (define (set-l l new-value structure)
   ((lens-set l) new-value structure))
@@ -64,21 +64,21 @@
     (check-equal? (set-l* structure [left 10] [right 20])
                   '(10 20))))
 
-(define (over l update-fn structure)
-  (set-l l (update-fn (view l structure)) structure))
+(define (over-l l update-fn structure)
+  (set-l l (update-fn (view-l l structure)) structure))
 (module+ test
   (require rackunit)
   (test-case "over - update values correctly"
              (define structure (list 1 2))
-             (check-equal? (over left add1 structure) '(2 2))
-             (check-equal? (over right add1 structure) '(1 3))))
+             (check-equal? (over-l left add1 structure) '(2 2))
+             (check-equal? (over-l right add1 structure) '(1 3))))
 
 (define (compose-lens inner outer)
   (lens (lambda (structure)
-          (view inner (view outer structure)))
+          (view-l inner (view-l outer structure)))
         (lambda (new-value structure)
           (set-l outer
-               (set-l inner new-value (view outer structure))
+               (set-l inner new-value (view-l outer structure))
                structure))))
 (module+ test
   (require rackunit)
@@ -87,7 +87,7 @@
                (compose-lens left right))
              (define structure '((1 2) (3 4)))
 
-             (check-equal? (view composed-lens structure) 3)
+             (check-equal? (view-l composed-lens structure) 3)
 
              (define updated-structure
                (set-l composed-lens "456 Oak Ave" structure))
@@ -102,7 +102,7 @@
                (lens-compose right left right))
              (define structure '((a b) ((1 2) (3 4))))
 
-             (check-equal? (view composed-lens structure) 2)
+             (check-equal? (view-l composed-lens structure) 2)
 
              (define updated-structure
                (set-l composed-lens "456 Oak Ave" structure))
@@ -114,21 +114,21 @@
   ;; Law 1: view (set-l lens value structure) = value
   (test-case "get-set law"
              (define structure (list 1 2))
-             (check-equal? (view left
+             (check-equal? (view-l left
                                  (set-l left "Test" structure))
                            "Test")
-             (check-equal? (view right
+             (check-equal? (view-l right
                                  (set-l right 99 structure))
                            99))
-  ;; Law 2: set lens (view lens structure) structure = structure
+  ;; Law 2: set lens (view-l lens structure) structure = structure
   (test-case "set-get law"
              (define structure (list 1 2))
              (check-equal? (set-l left
-                                (view left structure)
+                                (view-l left structure)
                                 structure)
                            structure)
              (check-equal? (set-l right
-                                (view right structure)
+                                (view-l right structure)
                                 structure)
                            structure))
 

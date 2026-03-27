@@ -24,9 +24,9 @@ built on top of @racketmodname[freer-lib/lens/lens].
   @examples[#:eval common-eval
     (define db (hash 'name "Alice" 'age 30))
 
-    (view (hash-lens 'name) db)
+    (view-l (hash-lens 'name) db)
     (set-l  (hash-lens 'age)  31 db)
-    (over (hash-lens 'age)  add1 db)
+    (over-l (hash-lens 'age)  add1 db)
   ]
 }
 
@@ -44,8 +44,8 @@ built on top of @racketmodname[freer-lib/lens/lens].
 
     (define p (point 3 7))
 
-    (view point-x p)
+    (view-l point-x p)
     (set-l  point-y 42 p)
-    (over point-x add1 p)
+    (over-l point-x add1 p)
   ]
 }
