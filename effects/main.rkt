@@ -6,6 +6,7 @@
     (all-from-out "cmd-effect.rkt")
     (all-from-out "http-effect.rkt")
     (all-from-out "log-effect.rkt")
+    (all-from-out "env-effect.rkt")
     (all-from-out "file-system-effect.rkt"))
 
 (require
@@ -14,4 +15,5 @@
     "cmd-effect.rkt"
     "http-effect.rkt"
     "log-effect.rkt"
+    "env-effect.rkt"
     "file-system-effect.rkt")
