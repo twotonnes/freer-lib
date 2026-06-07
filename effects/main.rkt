@@ -7,7 +7,8 @@
     (all-from-out "http-effect.rkt")
     (all-from-out "log-effect.rkt")
     (all-from-out "env-effect.rkt")
-    (all-from-out "file-system-effect.rkt"))
+    (all-from-out "file-system-effect.rkt")
+    (all-from-out "failure-effect.rkt"))
 
 (require
     "id-effect.rkt"
@@ -16,4 +17,5 @@
     "http-effect.rkt"
     "log-effect.rkt"
     "env-effect.rkt"
-    "file-system-effect.rkt")
+    "file-system-effect.rkt"
+    "failure-effect.rkt")
