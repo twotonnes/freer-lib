@@ -2,7 +2,8 @@
 
 (provide
   (struct-out rnd-effect)
-  rnd)
+  rnd
+  do-rnd)
 
 (require
   racket/contract
@@ -11,7 +12,9 @@
 (struct rnd-effect (min max) #:transparent)
 
 (define/contract (rnd min max)
-  (->i ([min exact-integer?]
-        [max (min) (and/c exact-integer? (>=/c min))])
-       [result free?])
+  (-> exact-integer? exact-integer? free?)
   (perform (rnd-effect min max)))
+
+(define/contract (do-rnd min max)
+  (-> exact-integer? exact-integer? exact-integer?)
+  (random min max))
