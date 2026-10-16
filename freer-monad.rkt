@@ -218,7 +218,13 @@
     (define result
       (run (sequence l)
            (lambda (eff k) (error "handler should not be called"))))
-    (check-equal? result '(1 2 3))))
+    (check-equal? result '(1 2 3)))
+  (test-case "sequence: works for empty lists as well"
+    (define l (list))
+    (define result
+      (run (sequence l)
+           (lambda (eff k) (error "handler should not be called"))))
+    (check-equal? result '())))
 
 (define/contract (map-m proc l [acc '()])
   (->* ((-> any/c free?) list?)

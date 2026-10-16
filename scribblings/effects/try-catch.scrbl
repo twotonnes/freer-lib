@@ -12,43 +12,46 @@
 
 @defmodule[freer-lib/try-catch]
 
-The try-catch pattern provides a mechanism for handling short-circuit failures in effectful computations. When a computation returns @racket[#f], the @racket[try] form captures this failure and allows an alternative computation to be executed instead.
+The try-catch pattern provides a mechanism for short-circuiting effectful computations. A computation wrapped with @racket[try] that returns @racket[#f] aborts the computation up to the nearest enclosing @racket[catch], and the fallback given to @racket[try] is used as the result of that @racket[catch] instead.
 
 @defproc[(try [computation free?] [fallback free?]) free?]{
-  Executes a computation and evaluates a fallback computation if the original returns @racket[#f].
+  Runs @racket[computation]. If its result is anything other than @racket[#f], that result is returned unchanged. If its result is @racket[#f], an internal failure effect carrying @racket[fallback] is performed, which the nearest enclosing @racket[catch] handles by discarding the rest of its computation and continuing with @racket[fallback].
 
-  When @racket[computation] returns @racket[#f], a @racket[failure-effect] is performed with the @racket[fallback] computation. If the computation returns any other value, that value is returned directly.
-
-  This is typically used with @racket[catch] to handle the @racket[failure-effect]:
+  The failure effect is private to this module, so @racket[try] must be used inside a @racket[catch]; otherwise the failure effect reaches the handler given to @racket[run], which cannot recognize it.
 
   @examples[#:eval try-catch-eval
     (define computation
       (do-m [x <- (return 10)]
-          (if (> x 20)
-              (return x)
-              (return #f))))
+            (if (> x 20)
+                (return x)
+                (return #f))))
 
-    (run (catch
-            (try computation (return 'fallback-value)))
-        (lambda (eff k) (k 'default)))
+    (run (catch (try computation (return 'fallback-value)))
+         (lambda (eff k) (k eff)))
   ]
 }
 
 @defproc[(catch [computation free?]) free?]{
-  Interprets a computation that may produce @racket[failure-effect]s, converting them into successful computations.
-
-  The @racket[catch] procedure installs an interpreter that handles @racket[failure-effect]s by returning their fallback computation. Any other effects are re-performed in the interpretation context.
-
-  This allows computations using @racket[try] to properly handle failures:
+  Handles the failures raised by @racket[try] inside @racket[computation]. When a failure occurs, the remainder of @racket[computation] is skipped and the resulting computation continues with the fallback that was passed to @racket[try]. All other effects are passed on unchanged, so they are handled by the enclosing handler (or an enclosing @racket[catch]), and @racket[computation] resumes with their result as usual.
 
   @examples[#:eval try-catch-eval
-    (define failing-computation
-      (do-m [a <- (return 1)]
-          [b <- (try (return #f) (return 100))]
-          (return (+ a b))))
+    (define (handler eff k)
+      (match eff
+        ['get-number (k 2)]))
 
-    (run (catch failing-computation)
-         (lambda (eff k) (k 'handler)))
+    (define failing-computation
+      (do-m [a <- (perform 'get-number)]
+            [b <- (try (return #f) (return 100))]
+            (return (+ a b))))
+
+    (code:comment "The fallback replaces the whole caught computation")
+    (run (catch failing-computation) handler)
+
+    (code:comment "Code outside the catch continues with the fallback's result")
+    (run (do-m [a <- (perform 'get-number)]
+               [b <- (catch (try (return #f) (return 100)))]
+               (return (+ a b)))
+         handler)
   ]
 }
 
@@ -57,10 +60,10 @@ The try-catch pattern provides a mechanism for handling short-circuit failures i
 The typical pattern for using try-catch is:
 
 @itemlist[
-  @item{Wrapping computations that might return @racket[#f] with @racket[try], providing a fallback}
-  @item{Wrapping the entire computation sequence with @racket[catch] to install the failure interpreter}
-  @item{If a computation returns @racket[#f], the fallback is used and subsequent computations are skipped}
-  @item{If all computations succeed (return non-@racket[#f] values), the computation proceeds normally}
+  @item{Wrap computations that might return @racket[#f] with @racket[try], providing a fallback.}
+  @item{Wrap the sequence of computations that should be aborted on failure with @racket[catch].}
+  @item{If a computation wrapped in @racket[try] returns @racket[#f], the computations after it (up to the @racket[catch]) are skipped, and the @racket[catch] produces the result of the fallback.}
+  @item{If all computations succeed (return non-@racket[#f] values), the computation proceeds normally.}
 ]
 
 @examples[#:eval try-catch-eval
@@ -69,13 +72,14 @@ The typical pattern for using try-catch is:
         (return n)
         (return #f)))
 
-  (define computation
-    (do-m [a <- (check-positive 5)]
-        [b <- (try (check-positive -3) (return 0))]
-        [c <- (check-positive 10)]
-        (return (+ a b c))))
+  (define (sum-of-positives x y z)
+    (do-m [a <- (try (check-positive x) (return 'not-positive))]
+          [b <- (try (check-positive y) (return 'not-positive))]
+          [c <- (try (check-positive z) (return 'not-positive))]
+          (return (+ a b c))))
 
-  (run (catch computation)
-       (lambda (eff k) (k 'error)))
+  (run (catch (sum-of-positives 5 3 10))
+       (lambda (eff k) (k eff)))
+  (run (catch (sum-of-positives 5 -3 10))
+       (lambda (eff k) (k eff)))
 ]
-

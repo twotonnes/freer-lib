@@ -6,28 +6,38 @@
              freer-lib))
 
 @(define std-eval (make-base-eval))
-@interaction-eval[#:eval std-eval (require racket freer-lib)]
+@interaction-eval[#:eval std-eval (require racket/match freer-lib)]
 
-@title{Fail Effect}
+@title{Failure Effect}
 
-@defmodule[freer-lib/effects/fail-effect]
+@defmodule[freer-lib/effects/failure-effect]
 
-The fail effect allows computations to signal failure with an error message. This is useful for error handling and control flow in effectful computations.
+The failure effect allows computations to signal failure with an error message. This is useful for error handling and control flow in effectful computations.
 
-@defstruct[fail-effect ([msg string?]) #:transparent]{
-  A descriptor that represents a failure with an associated error message.
+@defstruct*[failure-effect ([msg string?])]{
+  A descriptor that represents a failure with an associated error message. The struct is opaque, so handlers should use @racket[failure-effect?] and @racket[failure-effect-msg] (or a @racket[struct] pattern in @racket[match]) to inspect it.
 }
 
-@defproc[(fail [msg string?]) free?]{
+@defproc[(failure [msg string?]) free?]{
   Constructs an effect that signals failure with the given error message.
+
+  There is no default handler. A handler typically does not resume the continuation, so that the rest of the computation is skipped.
 }
 
-The fail effect is often used in conjunction with error handling in other effects. When an error occurs during command execution or HTTP requests, the @racket[fail] effect can be used to propagate the error through the computation.
+The failure effect can be used to propagate errors through a computation, for example when the result of a command execution or HTTP request is not what was expected.
 
 @examples[#:eval std-eval
-  (define computation
-    (do-m [x <- (id 10)]
-        (if (< x 20)
-            (fail "Value is too small")
-            (return x))))
+  (define (check-size x)
+    (do-m [v <- (id x)]
+          (if (< v 20)
+              (failure "Value is too small")
+              (return v))))
+
+  (define (handler eff k)
+    (match eff
+      [(id-effect v) (k v)]
+      [(failure-effect msg) (return (format "failed: ~a" msg))]))
+
+  (run (check-size 10) handler)
+  (run (check-size 30) handler)
 ]

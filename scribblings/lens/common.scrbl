@@ -16,10 +16,10 @@ This module provides ready-made lenses for common Racket data structures,
 built on top of @racketmodname[freer-lib/lens/lens].
 
 @defproc[(hash-lens [key any/c]) lens?]{
-  Returns a lens that focuses on the value associated with @racket[key] in a
-  hash table. The @emph{get} side uses @racket[hash-ref] and the @emph{set}
-  side uses @racket[hash-set], producing a new hash rather than mutating the
-  original.
+  Returns a lens that focuses on the value associated with @racket[key] in an
+  immutable hash table. The @emph{get} side uses @racket[hash-ref], so viewing
+  a missing key raises an error, and the @emph{set} side uses @racket[hash-set],
+  producing a new hash rather than mutating the original.
 
   @examples[#:eval common-eval
     (define db (hash 'name "Alice" 'age 30))
@@ -32,20 +32,23 @@ built on top of @racketmodname[freer-lib/lens/lens].
 
 @defform[(struct-lens id field-id)]{
   Constructs a lens that focuses on @racket[field-id] within an instance of the
-  struct @racket[id]. The accessor @racket[id-field-id] is used for @emph{get},
-  and @racket[struct-copy] is used for @emph{set} so the original instance is
-  never mutated.
+  struct @racket[id]. The accessor @racketidfont{id-field-id} is used for
+  @emph{get}, and @racket[struct-copy] is used for @emph{set} so the original
+  instance is never mutated.
+
+  Because the lens refers to the accessor @racketidfont{id-field-id} by name,
+  the lens must not be bound to that same name.
 
   @examples[#:eval common-eval
     (struct point (x y) #:transparent)
 
-    (define point-x (struct-lens point x))
-    (define point-y (struct-lens point y))
+    (define x-lens (struct-lens point x))
+    (define y-lens (struct-lens point y))
 
     (define p (point 3 7))
 
-    (view-l point-x p)
-    (set-l  point-y 42 p)
-    (over-l point-x add1 p)
+    (view-l x-lens p)
+    (set-l  y-lens 42 p)
+    (over-l x-lens add1 p)
   ]
 }

@@ -16,7 +16,7 @@ This module provides effects for performing file system operations such as readi
 
 @section{Structs}
 
-@defstruct[read-file-effect ([path path-string?]) #:transparent]{
+@defstruct*[read-file-effect ([path path-string?]) #:transparent]{
   An effect descriptor that represents a file read operation.
   
   @itemlist[
@@ -24,7 +24,7 @@ This module provides effects for performing file system operations such as readi
   ]
 }
 
-@defstruct[write-file-effect ([path path-string?]
+@defstruct*[write-file-effect ([path path-string?]
                               [bytes bytes?]
                               [exists-flag (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace)]) #:transparent]{
   An effect descriptor that represents a file write operation.
@@ -32,19 +32,19 @@ This module provides effects for performing file system operations such as readi
   @itemlist[
     @item{@racket[path]: The path to the file to write.}
     @item{@racket[bytes]: The bytes to write to the file.}
-    @item{@racket[exists-flag]: Controls behavior if the file already exists:
+    @item{@racket[exists-flag]: Controls behavior if the file already exists, with the same meaning as the @racket[#:exists] argument of @racket[open-output-file]:
       @itemlist[
-        @item{@racket['error]: Raise an error if the file exists (default in Racket).}
-        @item{@racket['append]: Append bytes to the existing file.}
-        @item{@racket['update]: Update the file if it exists, create otherwise.}
-        @item{@racket['replace]: Replace the file contents (same as @racket['truncate]).}
-        @item{@racket['truncate]: Truncate and overwrite the file.}
-        @item{@racket['truncate/replace]: Truncate, overwrite, and replace (Racket-specific).}
+        @item{@racket['error]: Raise an error if the file exists.}
+        @item{@racket['append]: Append to the end of the existing file.}
+        @item{@racket['update]: Open the existing file without truncating it and write from the start; raise an error if the file does not exist.}
+        @item{@racket['replace]: Delete the existing file and create a new one.}
+        @item{@racket['truncate]: Remove all existing data from the file and write to it.}
+        @item{@racket['truncate/replace]: Like @racket['truncate], but fall back to @racket['replace] if truncating fails.}
       ]}
   ]
 }
 
-@defstruct[create-folder-effect ([path path-string?]) #:transparent]{
+@defstruct*[create-folder-effect ([path path-string?]) #:transparent]{
   An effect descriptor that represents a folder creation operation.
   
   @itemlist[
@@ -52,7 +52,7 @@ This module provides effects for performing file system operations such as readi
   ]
 }
 
-@defstruct[check-path-effect ([path path-string?]) #:transparent]{
+@defstruct*[check-path-effect ([path path-string?]) #:transparent]{
   An effect descriptor that represents a path type check operation.
   
   @itemlist[
@@ -60,7 +60,7 @@ This module provides effects for performing file system operations such as readi
   ]
 }
 
-@defstruct[delete-path-effect ([path path-string?]) #:transparent]{
+@defstruct*[delete-path-effect ([path path-string?]) #:transparent]{
   An effect descriptor that represents a path deletion operation.
   
   @itemlist[
@@ -189,7 +189,7 @@ This module provides effects for performing file system operations such as readi
 @section{Default Handlers}
 
 @defproc[(do-read-file [path path-string?]) bytes?]{
-  Default handler for @racket[read-file-effect]. Reads the file at @racket[path] and returns its contents as bytes. Raises an error if the file cannot be read.
+  Default handler for @racket[read-file-effect]. Reads the file at @racket[path] and returns its contents as bytes. Raises an error that includes @racket[path] if the file cannot be read.
 }
 
 @defproc[(do-write-file [path path-string?]
@@ -203,7 +203,7 @@ This module provides effects for performing file system operations such as readi
 }
 
 @defproc[(do-check-path [path path-string?]) (or/c 'file 'directory 'link 'directory-link #f)]{
-  Default handler for @racket[check-path-effect]. Returns a symbol indicating the type of the path, or @racket[#f] if it does not exist.
+  Default handler for @racket[check-path-effect]. Returns a symbol indicating the type of the path (see @racket[file-or-directory-type]), or @racket[#f] if it does not exist.
 }
 
 @defproc[(do-delete-path [path path-string?]) void?]{
@@ -233,4 +233,16 @@ This module provides effects for performing file system operations such as readi
   (run (copy-file-if-exists "source.txt" "dest.txt") copy-handler)
 ]
 
-@bold{Error Handling}: File system operations can fail due to permission issues, missing files, or other I/O errors. The default handlers wrap file system operations with exception handlers that convert Racket exceptions to more readable error messages. You can write custom handlers to implement retry logic, fallback behavior, or alternative error handling strategies.
+A handler that dispatches every file system effect to its default handler looks like this:
+
+@racketblock[
+  (define (fs-handler effect k)
+    (match effect
+      [(read-file-effect path) (k (do-read-file path))]
+      [(write-file-effect path bytes flag) (k (do-write-file path bytes flag))]
+      [(create-folder-effect path) (k (do-create-folder path))]
+      [(check-path-effect path) (k (do-check-path path))]
+      [(delete-path-effect path) (k (do-delete-path path))]))
+]
+
+@bold{Error Handling}: File system operations can fail due to permission issues, missing files, or other I/O errors. The default handlers catch the Racket exceptions raised by the underlying operations and re-raise them as errors whose message includes the path that was being accessed. You can write custom handlers to implement retry logic, fallback behavior, or alternative error handling strategies.
