@@ -5,13 +5,12 @@
   id)
 
 (require
-  racket/contract
   "../freer-monad.rkt")
 
 (struct id-effect (value) #:transparent)
 
-(define/contract (id v)
-  (-> any/c free?)
+;; Type: (-> Any Free)
+(define (id v)
   (perform (id-effect v)))
 
 (module+ test

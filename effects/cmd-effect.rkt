@@ -12,19 +12,18 @@
   racket/port
   racket/system
   racket/exn
-  racket/contract
   "../freer-monad.rkt")
 
 (struct cmd-effect (value) #:transparent)
 
 (struct cmd-result (out err exit-code) #:transparent)
 
-(define/contract (cmd value)
-  (-> any/c free?)
+;; Type: (-> Any Free)
+(define (cmd value)
   (perform (cmd-effect value)))
 
-(define/contract (execute-command value)
-  (-> string? cmd-result?)
+;; Type: (-> String Cmd-result)
+(define (execute-command value)
   (with-handlers ([exn:fail? (lambda (e) (error (format "error running system command '~a': ~a" value (exn->string e))))])
       (match-define (list stdout stdin _ stderr control)
         (process* (find-shell-path) (shell-flag) value))
@@ -47,18 +46,18 @@
 (define (windows?)
   (eq? (system-type 'os) 'windows))
 
-;; Type: (-> String)
 ;; The shell that runs a command: PowerShell on Windows, sh elsewhere.
+;; Type: (-> String)
 (define (shell-name)
   (if (windows?) "powershell.exe" "sh"))
 
-;; Type: (-> String)
 ;; The argument that makes the shell run the command string that follows it.
+;; Type: (-> String)
 (define (shell-flag)
   (if (windows?) "-Command" "-c"))
 
-(define/contract (find-shell-path)
-  (-> path?)
+;; Type: (-> Path)
+(define (find-shell-path)
   (define shell-path (find-executable-path (shell-name)))
   (if (false? shell-path)
       (error (format "could not find ~a in PATH" (shell-name)))

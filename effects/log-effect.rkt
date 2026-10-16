@@ -10,7 +10,6 @@
 
 
 (require
-    racket/contract
     racket/format
     racket/match
     racket/date
@@ -20,8 +19,8 @@
 
 (struct log-effect (level message) #:transparent)
 
-(define/contract (log level message . args)
-    (->* (symbol? string?) () #:rest list? free?)
+;; Type: (-> Symbol String Any ... Free)
+(define (log level message . args)
     (define formatted-message
         (if (null? args)
             message
@@ -29,30 +28,28 @@
     (perform (log-effect level formatted-message)))
 
 
-(define/contract (log-dbg message . args)
-    (->* (string?) () #:rest list? free?)
+;; Type: (-> String Any ... Free)
+(define (log-dbg message . args)
     (apply log 'DEBUG message args))
 
 
-(define/contract (log-inf message . args)
-    (->* (string?) () #:rest list? free?)
+;; Type: (-> String Any ... Free)
+(define (log-inf message . args)
     (apply log 'INFO message args))
 
 
-(define/contract (log-err message . args)
-    (->* (string?) () #:rest list? free?)
+;; Type: (-> String Any ... Free)
+(define (log-err message . args)
     (apply log 'ERROR message args))
 
 
-(define/contract (write-log eff [display-proc default-log-display])
-    (->* (log-effect?)
-         ((-> log-effect? void?))
-         void?)
+;; Type: (-> Log-effect [(-> Log-effect Void)] Void)
+(define (write-log eff [display-proc default-log-display])
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error handling log effect: ~s" (exn-message exn))))])
         (display-proc eff)))
 
-(define/contract (default-log-display eff)
-    (-> log-effect? void?)
+;; Type: (-> Log-effect Void)
+(define (default-log-display eff)
     (define formatted (format "[~a] ~a :: ~a"
                               (moment->iso8601 (now/moment/utc))
                               (log-effect-level eff)
