@@ -5,13 +5,12 @@
   failure)
 
 (require
-  racket/contract
   "../freer-monad.rkt")
   
 (struct failure-effect (msg))
 
-(define/contract (failure msg)
-  (-> string? free?)
+;; Type: (-> String Free)
+(define (failure msg)
   (perform (failure-effect msg)))
 
 

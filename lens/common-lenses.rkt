@@ -7,6 +7,7 @@
              racket/syntax)
  "lens.rkt")
 
+;; Type: (-> Any Lens)
 (define (hash-lens key)
   (lens
    (lambda (h) (hash-ref h key))

@@ -7,12 +7,15 @@
 
 (struct iso (to-proc from-proc))
 
+;; Type: (-> Iso Any Any)
 (define (iso-to i d)
   ((iso-to-proc i) d))
 
+;; Type: (-> Iso Any Any)
 (define (iso-from i d)
   ((iso-from-proc i) d))
 
+;; Type: (-> Iso Lens)
 (define (iso->lens i)
   (lens
    (iso-to-proc i)

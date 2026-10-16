@@ -19,7 +19,6 @@
     do-delete-path)
 
 (require
-    racket/contract
     racket/format
     racket/file
     racket/exn
@@ -31,48 +30,48 @@
 (struct check-path-effect (path) #:transparent)
 (struct delete-path-effect (path) #:transparent)
 
-(define/contract (read-file path)
-    (-> path-string? free?)
+;; Type: (-> (U String Path) Free)
+(define (read-file path)
     (perform (read-file-effect path)))
 
-(define/contract (write-file path bytes exists-flag)
-    (-> path-string? bytes? (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace) free?)
+;; Type: (-> (U String Path) Bytes (U 'error 'append 'update 'replace 'truncate 'truncate/replace) Free)
+(define (write-file path bytes exists-flag)
     (perform (write-file-effect path bytes exists-flag)))
 
-(define/contract (create-folder path)
-    (-> path-string? free?)
+;; Type: (-> (U String Path) Free)
+(define (create-folder path)
     (perform (create-folder-effect path)))
 
-(define/contract (check-path path)
-    (-> path-string? free?)
+;; Type: (-> (U String Path) Free)
+(define (check-path path)
     (perform (check-path-effect path)))
 
-(define/contract (delete-path path)
-    (-> path-string? free?)
+;; Type: (-> (U String Path) Free)
+(define (delete-path path)
     (perform (delete-path-effect path)))
 
-(define/contract (do-read-file path)
-    (-> path-string? bytes?)
+;; Type: (-> (U String Path) Bytes)
+(define (do-read-file path)
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error reading file at '~a': ~a" path (exn->string exn))))])
         (file->bytes path)))
 
-(define/contract (do-write-file path bytes exists-flag)
-    (-> path-string? bytes? (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace) void?)
+;; Type: (-> (U String Path) Bytes (U 'error 'append 'update 'replace 'truncate 'truncate/replace) Void)
+(define (do-write-file path bytes exists-flag)
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error writing file at '~a': ~a" path (exn->string exn))))])
         (void (call-with-output-file path #:exists exists-flag (lambda (out) (write-bytes bytes out))))))
 
-(define/contract (do-create-folder path)
-    (-> path-string? void?)
+;; Type: (-> (U String Path) Void)
+(define (do-create-folder path)
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error creating folder at '~a': ~a" path (exn->string exn))))])
         (make-directory* path)))
 
-(define/contract (do-check-path path)
-    (-> path-string? (or/c 'file 'directory 'link 'directory-link #f))
+;; Type: (-> (U String Path) (U 'file 'directory 'link 'directory-link #f))
+(define (do-check-path path)
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error checking path at '~a': ~a" path (exn->string exn))))])
         (file-or-directory-type path)))
 
-(define/contract (do-delete-path path)
-    (-> path-string? void?)
+;; Type: (-> (U String Path) Void)
+(define (do-delete-path path)
     (with-handlers ([exn:fail? (lambda (exn) (error (format "error deleting path at '~a': ~a" path (exn->string exn))))])
         (delete-directory/files path #:must-exist? #f)))
 
@@ -106,6 +105,10 @@
       (do-write-file p #"a" 'error)
       (do-write-file p #"b" 'append)
       (check-equal? (do-read-file p) #"ab")))
+
+  (test-case "do-write-file: should raise an error when the exists flag is not a valid mode"
+    (with-temp-dir dir
+      (check-exn exn:fail? (lambda () (do-write-file (build-path dir "a.txt") #"x" 'bogus)))))
 
   (test-case "do-read-file: should raise an error when the file does not exist"
     (with-temp-dir dir

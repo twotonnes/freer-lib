@@ -5,13 +5,12 @@
   abort)
 
 (require
-  racket/contract
   "../freer-monad.rkt")
   
 (struct abort-effect ())
 
-(define/contract (abort)
-  (-> free?)
+;; Type: (-> Free)
+(define (abort)
   (perform (abort-effect)))
 
 (module+ test

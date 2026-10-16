@@ -19,6 +19,7 @@
   (define right (lens second (lambda (new-value structure)
                                (list-set structure 1 new-value)))))
 
+;; Type: (-> Lens Any Any)
 (define (view-l l structure)
   ((lens-get l) structure))
 (module+ test
@@ -28,6 +29,7 @@
              (check-equal? (view-l left structure) 1)
              (check-equal? (view-l right structure) 2)))
 
+;; Type: (-> Lens Any Any Any)
 (define (set-l l new-value structure)
   ((lens-set l) new-value structure))
 (module+ test
@@ -64,6 +66,7 @@
     (check-equal? (set-l* structure [left 10] [right 20])
                   '(10 20))))
 
+;; Type: (-> Lens (-> Any Any) Any Any)
 (define (over-l l update-fn structure)
   (set-l l (update-fn (view-l l structure)) structure))
 (module+ test
@@ -73,6 +76,7 @@
              (check-equal? (over-l left add1 structure) '(2 2))
              (check-equal? (over-l right add1 structure) '(1 3))))
 
+;; Type: (-> Lens Lens Lens)
 (define (compose-lens inner outer)
   (lens (lambda (structure)
           (view-l inner (view-l outer structure)))

@@ -5,15 +5,14 @@
     catch)
 
 (require
-    racket/contract
     racket/match
     racket/bool
     "freer-monad.rkt")
 
 (struct failure-effect (fallback))
 
-(define/contract (try computation fallback)
-    (-> free? free? free?)
+;; Type: (-> Free Free Free)
+(define (try computation fallback)
     (do-m
         [value <- computation]
         (if (false? value)
@@ -64,8 +63,8 @@
         ;; Then
         (check-match result (impure 'fallback-effect _))))
 
-(define/contract (catch computation)
-    (-> free? free?)
+;; Type: (-> Free Free)
+(define (catch computation)
     (match computation
         [(pure value) (return value)]
         [(impure (failure-effect fallback) _) fallback]
@@ -80,8 +79,8 @@
     (define failed-computation
         (return #f))
 
-    (define/contract (test-interpreter kv eff k)
-        (-> hash? any/c (-> any/c free?) free?)
+    ;; Type: (-> Hash Any (-> Any Free) Free)
+    (define (test-interpreter kv eff k)
         (match eff
             [(id-effect a)
                 (hash-set! kv 'id (+ 1 (hash-ref kv 'id 0)))

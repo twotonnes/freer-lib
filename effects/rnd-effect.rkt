@@ -6,17 +6,16 @@
   do-rnd)
 
 (require
-  racket/contract
   "../freer-monad.rkt")
 
 (struct rnd-effect (min max) #:transparent)
 
-(define/contract (rnd min max)
-  (-> exact-integer? exact-integer? free?)
+;; Type: (-> Integer Integer Free)
+(define (rnd min max)
   (perform (rnd-effect min max)))
 
-(define/contract (do-rnd min max)
-  (-> exact-integer? exact-integer? exact-integer?)
+;; Type: (-> Integer Integer Integer)
+(define (do-rnd min max)
   (random min max))
 
 

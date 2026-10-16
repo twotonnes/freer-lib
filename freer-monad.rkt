@@ -15,7 +15,6 @@
 
 
 (require racket/match
-         racket/contract
          racket/list
          (for-syntax racket/base))
 
@@ -30,6 +29,7 @@
 (struct pure (value) #:transparent)
 (struct impure (description k) #:transparent)
 
+;; Type: (-> Any Boolean)
 (define (free? m)
   (or (pure? m) (impure? m)))
 
@@ -38,8 +38,8 @@
 ;; return
 ;; ============================================================
 
-(define/contract (return v)
-  (-> any/c pure?)
+;; Type: (-> Any Pure)
+(define (return v)
   (pure v))
 
 (module+ test
@@ -52,8 +52,8 @@
 ;; perform
 ;; ============================================================
 
-(define/contract (perform desc)
-  (-> any/c impure?)
+;; Type: (-> Any Impure)
+(define (perform desc)
   (impure desc return))
 
 (module+ test
@@ -71,13 +71,14 @@
 ;; bind (>>=)
 ;; ============================================================
 
-(define/contract (bind m f)
-  (-> free? (-> any/c free?) free?)
+;; Type: (-> Free (-> Any Free) Free)
+(define (bind m f)
   (match m
     [(pure v) (f v)]
     [(impure desc k)
      (impure desc (lambda (x) (bind (k x) f)))]))
 
+;; Type: (-> Free (-> Any Free) Free)
 (define >>= bind)
 
 (module+ test
@@ -106,8 +107,8 @@
 ;; run
 ;; ============================================================
 
-(define/contract (run m handle)
-  (-> free? (-> any/c (-> any/c free?) free?) any/c)
+;; Type: (-> Free (-> Any (-> Any Free) Free) Any)
+(define (run m handle)
   (match m
     [(pure value) value]
     [(impure desc k) (run (handle desc k) handle)]))
@@ -201,10 +202,8 @@
 ;; mapM and sequence implementation
 ;; ============================================================
 
-(define/contract (sequence l [acc '()])
-  (->* ((listof free?))
-       (list?)
-       free?)
+;; Type: (-> (Listof Free) [(Listof Any)] Free)
+(define (sequence l [acc '()])
   (if (empty? l)
       (return (reverse acc))
       (do-m
@@ -220,10 +219,8 @@
            (lambda (eff k) (error "handler should not be called"))))
     (check-equal? result '(1 2 3))))
 
-(define/contract (map-m proc l [acc '()])
-  (->* ((-> any/c free?) list?)
-       (list?)
-       free?)
+;; Type: (-> (-> Any Free) (Listof Any) [(Listof Any)] Free)
+(define (map-m proc l [acc '()])
   (if (empty? l)
       (return (reverse acc))
       (do-m

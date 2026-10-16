@@ -4,14 +4,13 @@
  string->free-jsexpr)
 
 (require
- racket/contract
  racket/match
  json
  "../freer-monad.rkt"
  "../effects/main.rkt")
 
-(define/contract (string->free-jsexpr str [log-level 'err])
-  (->* (string?) ((or/c 'dbg 'inf 'err)) free?)
+;; Type: (-> String [(U 'dbg 'inf 'err)] Free)
+(define (string->free-jsexpr str [log-level 'err])
   (with-handlers ([exn:fail? (lambda (exn)
                                (do-m
                                 (match log-level
@@ -76,6 +75,12 @@
     ;; Then
     (check-equal? result 'aborted)
     (check-equal? (map car (unbox logs)) '(INFO)))
+
+  (test-case "string->free-jsexpr: should raise an error when the log level is unknown and the string is invalid"
+    (check-exn exn:fail?
+               (lambda ()
+                 (run (string->free-jsexpr "{bad" 'trace)
+                      (recording-handler (box '()))))))
 
   (test-case "string->free-jsexpr: should log at DEBUG and abort when the string is invalid and the level is 'dbg"
     ;; Given

@@ -26,7 +26,7 @@ Tests are the type check, so their coverage must be good enough for that. Each p
 - Less processing cost: no contract wrappers run on any call.
 - Wrong argument types are no longer reported at the call site. A type error shows up only where a test or caller hits it, so coverage carries more weight.
 - Type comments can drift from the code. The code-writer updates them with each change, and the test-writer checks them against the test arguments.
-- Existing contracts are removed in a follow-up change, once the tests cover the procedures they guard. Until then, existing contracts stay in place.
+- All runtime contracts were removed, once the tests covered the procedures they guarded. Type comments replace them.
 - Failure conditions that a contract used to reject are handled by values or effects, as the pure-code rule already requires.
 
 * Related
