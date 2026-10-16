@@ -15,7 +15,7 @@ Which requirement of the spec is realised by which module and procedure.
 |-------------+--------+-----------|
 
 * Design
-Data structures, procedure signatures and contracts, effects described and how they are
+Data structures, procedure signatures and types (no runtime contracts), effects described and how they are
 handled, and the pure/impure boundary ([[file:../../design/decisions/0003-pure-code-and-failure-handling.org][0003]]).
 
 * Implementation checks

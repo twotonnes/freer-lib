@@ -56,3 +56,33 @@
                             (format-id #'struct-type "~a->~a" struct-name-str field-sym))])
            #`(combine-out (struct-out struct-type)
                           #,@lens-stx))])))
+
+
+(module+ test
+  (require
+    rackunit
+    "lens.rkt")
+
+  (struct/lens point (x y) #:transparent)
+
+  (test-case "struct/lens: should define a struct with the given fields"
+    (check-equal? (point-x (point 1 2)) 1)
+    (check-equal? (point-y (point 1 2)) 2))
+
+  (test-case "struct/lens: should pass the struct options through, such as #:transparent"
+    (check-equal? (point 1 2) (point 1 2)))
+
+  (test-case "struct/lens: should define a lens for each field that views the field"
+    (check-equal? (view-l point->x (point 1 2)) 1)
+    (check-equal? (view-l point->y (point 1 2)) 2))
+
+  (test-case "struct/lens: should set a field and leave the original struct unchanged"
+    ;; Given
+    (define original (point 1 2))
+
+    ;; When
+    (define updated (set-l point->y 5 original))
+
+    ;; Then
+    (check-equal? updated (point 1 5))
+    (check-equal? original (point 1 2))))

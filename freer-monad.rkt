@@ -240,3 +240,117 @@
       (run (map-m proc l)
            (lambda (eff k) (error "handler should not be called"))))
     (check-equal? result '(2 4 6))))
+
+
+;; ============================================================
+;; Additional tests: predicates, laws, run, sequence, map-m, do-m
+;; ============================================================
+
+(module+ test
+  (require rackunit)
+
+  (test-case "free?: should return #t for pure and impure values"
+    (check-true (free? (return 1)))
+    (check-true (free? (perform 'effect))))
+
+  (test-case "free?: should return #f for values that are not free"
+    (check-false (free? 5))
+    (check-false (free? 'pure))
+    (check-false (free? (list 1 2))))
+
+  (test-case "bind: should satisfy the left identity law"
+    ;; Given
+    (define f (lambda (x) (return (+ x 1))))
+
+    ;; When
+    (define result (>>= (return 3) f))
+
+    ;; Then
+    (check-equal? result (f 3)))
+
+  (test-case "bind: should satisfy the right identity law for an impure computation"
+    ;; Given
+    (define m (perform 'get))
+    (define (handle eff k) (k 7))
+
+    ;; When
+    (define result (run (>>= m return) handle))
+
+    ;; Then
+    (check-equal? result (run m handle)))
+
+  (test-case "bind: should satisfy the associativity law"
+    ;; Given
+    (define m (return 2))
+    (define f (lambda (x) (return (* x 3))))
+    (define g (lambda (y) (return (+ y 1))))
+
+    ;; When
+    (define left (>>= (>>= m f) g))
+    (define right (>>= m (lambda (x) (>>= (f x) g))))
+
+    ;; Then
+    (check-equal? left right))
+
+  (test-case "run: should continue with the computation the handler returns"
+    ;; Given
+    (define computation
+      (do-m [x <- (perform 'a)]
+            (return x)))
+
+    ;; When
+    (define result
+      (run computation
+           (lambda (eff k)
+             (match eff
+               ['a (perform 'b)]
+               ['b (k 5)]))))
+
+    ;; Then
+    (check-equal? result 5))
+
+  (test-case "sequence: should return an empty list when given an empty list"
+    (check-equal? (run (sequence '()) (lambda (eff k) (error "handler should not be called")))
+                  '()))
+
+  (test-case "sequence: should run effects in order and keep the results in order"
+    ;; Given
+    (define computation (sequence (list (perform 'a) (return 2) (perform 'b))))
+
+    ;; When
+    (define result
+      (run computation
+           (lambda (eff k)
+             (match eff
+               ['a (k 1)]
+               ['b (k 3)]))))
+
+    ;; Then
+    (check-equal? result '(1 2 3)))
+
+  (test-case "map-m: should return an empty list when given an empty list"
+    (check-equal? (run (map-m return '()) (lambda (eff k) (error "handler should not be called")))
+                  '()))
+
+  (test-case "map-m: should perform an effect for each element and keep the results in order"
+    ;; Given
+    (define (proc v) (perform v))
+
+    ;; When
+    (define result
+      (run (map-m proc '(a b))
+           (lambda (eff k)
+             (match eff
+               ['a (k 1)]
+               ['b (k 2)]))))
+
+    ;; Then
+    (check-equal? result '(1 2)))
+
+  (test-case "do-m: should raise an error when a binding pattern does not match"
+    ;; When / Then
+    (check-exn exn:fail?
+               (lambda ()
+                 (run (do-m [(list a b) <- (return 'not-a-list)]
+                            (return a))
+                      (lambda (eff k) (error "handler should not be called")))))))

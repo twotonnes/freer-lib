@@ -61,7 +61,7 @@ No code is written before the plan is complete.
 
 ## Phase 6: Documentation
 Start only after `make test` passes.
-1. Delegate to `code-writer` (documentation mode) with the changed public procedures, their contracts, and the purpose of the change.
+1. Delegate to `code-writer` (documentation mode) with the changed public procedures, their type comments, and the purpose of the change.
 2. Run `make build`. On failure, send the output back to `code-writer` and repeat.
 
 ## Phase 7: Design update

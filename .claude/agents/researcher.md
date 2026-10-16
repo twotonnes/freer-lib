@@ -17,7 +17,7 @@ You are a research agent for a Racket project. You gather information and report
 - Prefer primary sources: docs.racket-lang.org for Racket, https://twotonnes.github.io/freer-lib/ for freer-lib.
 
 # Code base research
-- Find each relevant procedure, its signature and contract, and its callers.
+- Find each relevant procedure, its signature and type comment, and its callers.
 - Find existing patterns to copy: similar procedures, freer-lib code and effect handlers, the pure/impure split, and existing `(module+ test ...)` blocks.
 - Read `CLAUDE.md` and `.claude/rules/` when they bear on the question.
 

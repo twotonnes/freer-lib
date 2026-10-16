@@ -1,0 +1,34 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-16
+:END:
+#+TITLE: 0001. No runtime contracts; tests check types
+
+* Context
+Runtime contract checks run on every call to a contracted procedure. In a project that another project uses heavily, they cost noticeable processing time. The library's behaviour is what matters to its users. Types only matter insofar as the behaviour depends on them.
+
+* Options
+** Option A: Keep runtime contracts
+Every procedure keeps its contract. Wrong argument types are caught on every call, at a processing cost.
+
+** Option B: No runtime contracts; tests check types
+Procedures carry no contracts. Each procedure's type is written in a comment above its definition. Functional tests cover every path, and pass arguments of the types the comment allows. If the tests pass, the types line up.
+
+** Option C: Keep contracts in tests only
+Contracts stay in the code, but are enabled only under test. Production pays no cost, and the tests still check types.
+
+* Decision
+We will not use runtime contracts in this project. Procedures are checked by functional tests (unit tests) that cover the happy path, the other paths, and the edge cases. Each procedure's type is written in a comment directly above its definition.
+
+Tests are the type check, so their coverage must be good enough for that. Each procedure's tests must exercise every branch it has.
+
+* Consequences
+- Less processing cost: no contract wrappers run on any call.
+- Wrong argument types are no longer reported at the call site. A type error shows up only where a test or caller hits it, so coverage carries more weight.
+- Type comments can drift from the code. The code-writer updates them with each change, and the test-writer checks them against the test arguments.
+- Existing contracts are removed in a follow-up change, once the tests cover the procedures they guard. Until then, existing contracts stay in place.
+- Failure conditions that a contract used to reject are handled by values or effects, as the pure-code rule already requires.
+
+* Related
+- Rule: =.claude/rules/pure-code.md=.
+- Agents and skills: =.claude/agents/code-writer.md=, =.claude/agents/test-writer.md=, =.claude/skills/test-writing/SKILL.md=.

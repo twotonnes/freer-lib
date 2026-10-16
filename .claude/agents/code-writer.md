@@ -20,9 +20,11 @@ Make every case in the test plan pass.
 - Treat the test plan as the specification. If a case is ambiguous or looks wrong, implement the rest, and flag that case in the report. Do not guess.
 - Follow `.claude/rules/`:
   - Keep code pure, except code that touches the outside world. Mark impure procedures with a `!` suffix.
-  - Never raise exceptions from pure code, except on contract violations. Model failures as values or the freer-lib `failure` effect. Wrap calls that can raise, such as `/`, in `with-handlers`.
+  - Never raise exceptions from pure code. Model failures as values or the freer-lib `failure` effect. Wrap calls that can raise, such as `/`, in `with-handlers`.
+  - Never use runtime contracts (`define/contract`, `->`, `->i`, `provide/contract`). See `design/decisions/0001-no-contracts.org`.
+- Above each procedure definition, write its type as a comment, one line, using these names: `Integer`, `Natural`, `Real`, `String`, `Symbol`, `Boolean`, `Bytes`, `Void`, `Any`, `(Listof T)`, `(U A B)` for unions, `Free` for a freer monad value, and `(-> A B ... Result)` for procedures. Example: `;; Type: (-> Integer (Listof String) Free)`. Keep the comment in sync when the signature changes.
   - Describe effects as monadic procedures using freer-lib. Handle them in effect handlers. Use the `freer-lib` skill. Before writing, find similar code in the project and copy its pattern.
-- Match the surrounding code: naming, contracts, `provide` forms, and comment density.
+- Match the surrounding code: naming, `provide` forms, and comment density.
 - Change only what the request needs. Do not refactor unrelated code.
 - After editing, remove any `require` that the edited file no longer uses.
 - After editing, run `make compile` and fix every compile error. Then run the test suite as described below.
@@ -45,7 +47,7 @@ Document the public procedures, structs, and modules you are given.
 ## Rules
 - Write Scribble sources in `scribblings/`, starting from `#lang scribble/manual`. The entry point is `scribblings/main.scrbl`.
 - Put each module's docs in its own file (for example `scribblings/type.scrbl`). Include it from `main.scrbl` with `@include-section`. Update an existing section; do not duplicate it.
-- Use `@defmodule`, `@defproc`, `@defstruct*`, and `@defthing`. Copy each signature and contract exactly from the code. Add `@racketblock` examples where they clarify use.
+- Use `@defmodule`, `@defproc`, `@defstruct*`, and `@defthing`. Copy each signature exactly from the code, and its type from the type comment. Add `@racketblock` examples where they clarify use.
 - For monadic (freer-lib) procedures, list the effects they describe. For impure procedures, state that they are effectful.
 - Do not change source code or tests. If the code and the requested docs disagree, document the code and flag the difference.
 - If the change affects the project overview (vision, layers, structure, commands), update `README.md` to match.

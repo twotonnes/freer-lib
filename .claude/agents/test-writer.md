@@ -16,7 +16,7 @@ Produce a test plan. Do not create or edit any file.
 
 For each new or changed procedure, write cases for:
 - **Happy path**: the intended, typical use.
-- **Other paths**: every alternative branch, error or failure path, and contract violation.
+- **Other paths**: every alternative branch and every error or failure path.
 - **Edge cases**: empty inputs, boundaries, zero, negative, and very large values, single-element inputs.
 
 For monadic (freer-lib) procedures, cover the effects the procedure describes, and the result after a test handler resolves them, as well as the pure logic.

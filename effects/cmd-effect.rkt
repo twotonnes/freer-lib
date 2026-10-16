@@ -27,7 +27,7 @@
   (-> string? cmd-result?)
   (with-handlers ([exn:fail? (lambda (e) (error (format "error running system command '~a': ~a" value (exn->string e))))])
       (match-define (list stdout stdin _ stderr control)
-        (process* (find-cmd-path) "-Command" value))
+        (process* (find-shell-path) (shell-flag) value))
 
       (define out (port->string stdout))
       (define err (port->string stderr))
@@ -43,10 +43,84 @@
           (error "command returned #f as exit code")
           (cmd-result out err exit-code))))
 
-(define/contract (find-cmd-path)
+;; Type: (-> Boolean)
+(define (windows?)
+  (eq? (system-type 'os) 'windows))
+
+;; Type: (-> String)
+;; The shell that runs a command: PowerShell on Windows, sh elsewhere.
+(define (shell-name)
+  (if (windows?) "powershell.exe" "sh"))
+
+;; Type: (-> String)
+;; The argument that makes the shell run the command string that follows it.
+(define (shell-flag)
+  (if (windows?) "-Command" "-c"))
+
+(define/contract (find-shell-path)
   (-> path?)
-  (define cmd-name "powershell.exe")
-  (define cmd-path (find-executable-path cmd-name))
-  (if (false? cmd-path)
-      (error (format "could not find ~a in PATH" cmd-name))
-      cmd-path))
+  (define shell-path (find-executable-path (shell-name)))
+  (if (false? shell-path)
+      (error (format "could not find ~a in PATH" (shell-name)))
+      shell-path))
+
+(module+ test
+  (require
+    rackunit
+    racket/match
+    "../freer-monad.rkt")
+
+  (test-case "cmd: should perform a cmd-effect with the command"
+    (check-match (cmd "echo hi") (impure (cmd-effect "echo hi") _)))
+
+  (test-case "find-shell-path: should return a path to an existing shell"
+    (check-true (file-exists? (find-shell-path))))
+
+  (test-case "shell-name: should be sh when not running on Windows"
+    (unless (windows?)
+      (check-equal? (shell-name) "sh")
+      (check-equal? (shell-flag) "-c")))
+
+  (test-case "execute-command: should return the output and exit code 0 for a successful command"
+    ;; Given
+    (define command "echo hello")
+
+    ;; When
+    (define result (execute-command command))
+
+    ;; Then
+    (check-equal? result (cmd-result "hello\n" "" 0)))
+
+  (test-case "execute-command: should return stderr and the exit code of a failing command"
+    ;; Given
+    (define command "echo oops 1>&2; exit 3")
+
+    ;; When
+    (define result (execute-command command))
+
+    ;; Then
+    (check-equal? result (cmd-result "" "oops\n" 3)))
+
+  (test-case "execute-command: should pass the command to the shell without changing its quoting"
+    ;; Given
+    (define command "printf '%s' 'a b'")
+
+    ;; When
+    (define result (execute-command command))
+
+    ;; Then
+    (check-equal? (cmd-result-out result) "a b"))
+
+  (test-case "cmd: should run the command through a handler that calls execute-command"
+    ;; Given
+    (define computation (cmd "echo hi"))
+
+    ;; When
+    (define result
+      (run computation
+           (lambda (eff k)
+             (match eff
+               [(cmd-effect value) (k (execute-command value))]))))
+
+    ;; Then
+    (check-equal? result (cmd-result "hi\n" "" 0))))
