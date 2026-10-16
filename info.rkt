@@ -1,6 +1,7 @@
 #lang info
 
 (define collection "freer-lib")
+(define version "0.0.0")
 (define scribblings '(("scribblings/manual.scrbl" (multi-page))))
 (define deps '("base" "gregor" "rebellion"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))

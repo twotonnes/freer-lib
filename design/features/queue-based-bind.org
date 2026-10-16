@@ -1,0 +1,123 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-16
+:END:
+#+TITLE: Queue-based bind
+
+* Breaking change
+This feature changes the public shape of the waiting-computation structure. It gains a field
+that holds the queue of pending continuations, so code that matches or builds the structure
+with its old number of fields breaks. This is a *breaking change*. It is released as version 1.0.0,
+the first release under the versioning strategy in [[file:../decisions/0002-versioning-strategy.org][decision 0002]].
+Its changelog entry has a Migration subsection that gives the steps for code that matches or builds
+the structure. Other options considered and not taken: keeping the old shape by carrying the queue
+inside the continuation, and hiding the structures from users.
+
+Affected, in this repository:
+- The structure's definition, its exports, and the tests that match or build it.
+- The failure-catching operation and its tests, and the tests of the effect modules that match
+  the structure.
+- The reference documentation of the structure, and the examples that construct it.
+
+Affected, in consumers: Puzzleten's generation and profiling code match and rebuild the
+structure with its old number of fields. They must be updated when they adopt this version.
+Updating them is not part of this feature.
+
+* Summary
+Binding a computation that is still waiting for an effect makes every later effect of that
+computation cost more, in proportion to how many such binds are nested around it. A
+program whose calls are nested inside one another, such as a recursive procedure that
+measures each of its calls, therefore runs in time that grows faster than its work. The
+feature changes the representation of waiting computations so that binding and resuming
+cost does not grow with the nesting, and the library's behaviour stays the same.
+
+The motivation is measured in Puzzleten's research document on disabling contracts (in the
+Puzzleten repository), in its section on profiling overhead, where the profiled run of a
+recursive procedure slows superlinearly.
+A scratch benchmark on the current library confirms the growth: a computation nested 1000
+levels deep takes about 10 ms, 2000 about 40 ms, 4000 about 170 ms, and 8000 about 770 ms,
+so each doubling of depth multiplies the time by about 4.3.
+
+* Scope
+** In scope
+- The representation of computations that are waiting for an effect, and the operations
+  that build and run them: performing an effect, returning a value, binding a computation to
+  a function, the sequential notation for binds, running a computation under a handler,
+  sequencing a list of computations, and mapping a computation-producing function over a list.
+- Keeping every observable result of those operations the same as before.
+- Making the cost of binding and resuming independent of the number of binds that are
+  nested around an effect (requirement 7).
+
+** Out of scope
+- Any change to the effects a program can perform, to handlers' interface beyond what
+  they already receive, or to the contracts of the library (there are none; see
+  [[file:../decisions/0001-no-contracts.org][decision 0001]]).
+- Changes to Puzzleten, including its profiling and its matches on the waiting-computation
+  structure. Puzzleten's own spec decides how its profiling uses the library after this feature.
+- Changing the speed of computations that do no effects, beyond what follows from the
+  representation change.
+- New operations, a different notation for sequences of binds, or typed effects.
+- Repeated resumption. A waiting computation that is resumed many times pays the cost of its
+  pending work each time, so the cost of repeated resumption of a deep computation is not
+  bounded by this feature.
+- Memory use. It is not a goal, but must not grow without bound for a finished computation.
+
+* Requirements
+1. Every computation built with the existing operations gives the same result when it is run,
+   for every handler: the same effects in the same order, with the same descriptions, and the
+   same final value.
+2. A handler that resumes a waiting computation with a value continues it exactly as
+   before. Resuming it a second time behaves as it does today.
+3. Binding obeys the monad laws observationally: binding a computation that has already
+   finished to a function gives that function's result, binding a computation to the operation
+   that wraps a plain value leaves it unchanged, and grouping nested binds in different ways
+   gives the same effects and result.
+4. A computation with at least 100 000 binds nested in sequence runs to completion, as it
+   does today.
+5. Errors raised by a continuation, or by a handler, propagate to the caller as they do
+   today, and do not leave the library in a state that affects later runs.
+6. The reference documentation no longer documents accessors of the waiting-computation
+   structure that are not exported.
+7. Binding and resuming costs do not grow with the number of binds nested around an effect.
+   For a computation nested to depth n, where each level waits for one effect, doubling n
+   increases the median time to run it, over repeated runs, by at most a factor of 2.5.
+
+* Architecture fit
+- Freer-lib is a single library with no components, and this feature changes only its
+  core representation. The existing decisions are not affected.
+- Every consumer of the library is affected only through its results and timing; none of
+  its code needs to change for requirements 1 to 3 to hold.
+- The feature is a change to the pure part of the library. It performs no effects of its
+  own and touches no outside world.
+
+* Acceptance criteria
+- [ ] The existing test suite passes after the tests that match or build the waiting-computation
+  structure are updated for its new shape, and no other expected result changes.
+- [ ] A test runs a set of computations mixing effects, failures, sequencing, and mapping
+  under one handler both before and after the change, and their results and effect traces
+  are the same.
+- [ ] The monad law tests from the current test suite pass, plus a test that grouping
+  nested binds two ways gives the same trace.
+- [ ] A test runs a computation with 100 000 nested binds to completion.
+- [ ] A test resumes a waiting computation twice and checks the result matches the
+  behaviour recorded before the change.
+- [ ] Errors raised inside a continuation and inside a handler reach the caller, and a
+  following run in the same process is unaffected.
+- [ ] The reference documentation mentions no accessor of the waiting-computation structure that
+  is not exported (requirement 6), checked by inspection.
+- [ ] A test matches and builds the waiting-computation structure with three fields, and the
+  reference documentation shows the same three fields (Breaking change section).
+- [ ] For computations nested to depth n, where each level waits for one effect, the median time
+  to run the computation at depth 2n is at most 2.5 times the median time at depth n, over
+  repeated runs (requirement 7).
+
+* Open questions
+- None.
+
+* Related
+- [[file:../architecture.org][Architecture]].
+- [[file:../decisions/0001-no-contracts.org][0001. No runtime contracts; tests check types]].
+- [[file:../decisions/0002-versioning-strategy.org][0002. Versioning strategy]].
+- Puzzleten's research document on disabling contracts and its performance profiling spec,
+  both in the Puzzleten repository. They are the motivation and are read from there.
+- Detailed design: [[file:../../detailed-design/features/queue-based-bind.org][queue-based bind]].

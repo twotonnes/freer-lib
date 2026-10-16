@@ -1,2 +1,20 @@
 #+TITLE: Code architecture
 
+* Module table
+Describes the design of [[file:features/queue-based-bind.org][queue-based bind]] (draft); update to the code when it is implemented.
+
+| Module | Role | Notes |
+|--------+------+-------|
+| =freer-monad.rkt= | Core of the library: =pure=, =impure=, =perform=, =return=, =>>==, =run=, =do-m=, =sequence=, =map-m= | Pure. =impure= has three fields: description, continuation, queue. Internal: =leaf=, =node=, =make-impure=, =resume=, =q-append=, =q-pop= |
+| =try-catch.rkt= | =try= and =catch= on the failure effect | Pure. =catch= builds its waiting clause with =perform= and =>>== |
+| =effects/*.rkt= | One module per effect: its description, its constructor, and its tests | Pure. Each builds effects with =perform= |
+
+* Data flow
+- =perform= creates a waiting computation with one pending continuation, =return=.
+- =>>== on a waiting computation appends the function to its queue. It never wraps the continuation.
+- A handler receives the description and the continuation =k=, and may call =k= any number of times.
+- Calling =k= resumes the queue: it pops functions and applies them, and stops at the next waiting computation, whose queue is joined to the rest.
+- =run= drives this loop until a pure value is returned.
+
+* Effects
+None. The library performs no effects and holds no state. Handlers are supplied by callers.

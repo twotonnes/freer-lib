@@ -1,0 +1,256 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-16
+:SPEC: ../../design/features/queue-based-bind.org
+:END:
+#+TITLE: Queue-based bind: detailed design
+
+* Summary
+A waiting computation (=impure=) keeps its pending continuations in a queue, a third field
+of the structure, instead of wrapping its continuation again on every bind. Bind appends one
+function to the queue; resuming pops functions until the next effect. The library is pure
+throughout, and the handler interface (=run=, the description and the continuation) is unchanged.
+
+* Modules and procedures
+The files this design changes are:
+- =freer-monad.rkt=: the whole library.
+- =try-catch.rkt=: the =catch= operation and its test.
+- The test blocks of =effects/failure-effect.rkt=, =effects/abort-effect.rkt=, =effects/cmd-effect.rkt=,
+  =effects/http-effect.rkt=, =effects/id-effect.rkt=, =effects/rnd-effect.rkt= and =effects/log-effect.rkt=,
+  listed under "Deliberate breaks".
+- The Scribble files listed under "Deliberate documentation change".
+- At release, =info.rkt= and =CHANGELOG.md=, set by the bump-version skill (see the release check below).
+
+Requirement numbers refer to the [[file:../../design/features/queue-based-bind.org][spec]].
+
+| Requirement | Module | Procedure |
+|-------------+--------+-----------|
+| 1. Same results under running | =freer-monad.rkt= | =perform=, =return=, =bind=, =resume=, =run=; =sequence=, =map-m=, =do-m= unchanged in code |
+| 2. Handler resumes a waiting computation; second resume the same | =freer-monad.rkt= | =make-impure=, =resume= (the continuation field) |
+| 3. Monad laws, observationally | =freer-monad.rkt= | =return=, =bind= (~>>=~), =run= |
+| 4. 100 000 nested binds run to completion | =freer-monad.rkt= | =bind=, =resume=, =q-append=, =q-pop= |
+| 5. Errors propagate; no state left behind | =freer-monad.rkt=, =try-catch.rkt= | =bind=, =resume=, =run=; =catch= (its waiting clause is rewritten, see Design) |
+| 6. Reference documentation has no unexported accessors | =scribblings/= (see Deliberate documentation change) | none (documentation) |
+| 7. Binding and resuming costs do not grow with nesting (2.5x per doubling of depth) | =freer-monad.rkt= | =bind=, =resume=, =q-append=, =q-pop=, =make-impure= (timing check) |
+| Breaking change (spec section, not numbered): three-field structure | =freer-monad.rkt=, =scribblings/eff-monad/core.scrbl= | struct =impure=; test of the three-field pattern and constructor, and the documented fields; see Implementation checks |
+| Release (version 1.0.0, Migration subsection; not a numbered requirement) | =info.rkt=, =CHANGELOG.md= | none (set by the bump-version skill when the feature is complete) |
+
+* Design
+** Data structures
+#+begin_src racket
+(struct pure (value) #:transparent)                 ; unchanged
+(struct impure (description k queue) #:transparent) ; queue is new
+(struct leaf (f))                                   ; one pending continuation (-> Any Free)
+(struct node (left right))                          ; two non-empty queues
+#+end_src
+
+- =pure= is unchanged.
+- =impure= has three fields. =description= is the effect description. =k= is a procedure
+  (-> Any Free) that resumes the queue: it is built by =make-impure= as a closure over the
+  queue, so a handler calls it exactly as today. =queue= holds the pending continuations.
+- The library builds waiting computations only through =make-impure=, so =k= always resumes
+  its own =queue=, and =queue= is never empty. The struct is exported by name and its
+  constructor is public, so a user could build one with a queue of their own; the
+  documentation directs users to =perform=, =return= and ~>>=~ instead, and this is not
+  guarded.
+- =leaf= and =node= are internal. They are not exported and are not transparent, so
+  =equal?= on them is =eq?=, as it is today for the continuation procedures.
+- A queue is a tree of =leaf= and =node=, read left to right. The empty queue is =#f=; it
+  appears only as the remainder after the last function is popped, never inside a =node=.
+
+** Procedures
+Types follow the code-writer's convention (see =.claude/agents/code-writer.md=). Procedures
+not listed are unchanged: =free?=, ~>>=~, =do-m=, =sequence=, =map-m=.
+
+- =perform= realises requirement 1 and 2. It builds a waiting computation whose only pending
+  continuation is =return=.
+  #+begin_src racket
+  ;; Type: (-> Any Impure)
+  (define (perform desc) (make-impure desc (leaf return)))
+  #+end_src
+- =make-impure= builds the waiting structure. It is the only place =impure= is constructed in
+  the library.
+  #+begin_src racket
+  ;; Type: (-> Any Queue Impure)
+  (define (make-impure desc queue)
+    (impure desc (lambda (x) (resume queue x)) queue))
+  #+end_src
+- =bind= (~>>=~ is the same procedure) realises requirements 3 and 7. A pure value is
+  passed to the function. A waiting computation gets the function appended to its queue, at
+  O(1) cost.
+  #+begin_src racket
+  ;; Type: (-> Free (-> Any Free) Free)
+  (define (bind m f)
+    (match m
+      [(pure v) (f v)]
+      [(impure d _ q) (make-impure d (q-append q (leaf f)))]))
+  #+end_src
+- =resume= realises requirements 2, 4 and 7. It pops the first function, applies it to the value,
+  and continues with the rest of the queue while the result is pure. It stops at the first
+  waiting result and joins that result's queue to the rest of the queue.
+  #+begin_src racket
+  ;; Type: (-> Queue Any Free)
+  (define (resume q x)
+    (let-values ([(f rest) (q-pop q)])
+      (define m (f x))
+      (cond [(not rest) m]
+            [else (match m
+                    [(pure v) (resume rest v)]
+                    [(impure d _ q2) (make-impure d (q-append q2 rest))])])))
+  #+end_src
+  The pure path is a tail call, so a long run of pure results does not grow the stack.
+- =q-append= joins two queues in O(1). One side may be empty.
+  #+begin_src racket
+  ;; Type: (-> (U Queue #f) (U Queue #f) (U Queue #f))
+  #+end_src
+- =q-pop= returns the first function and the remaining queue. When the left child of a =node=
+  is itself a =node=, it rotates the tree to the right (=(node (node a b) r)= becomes
+  =(node a (node b r))=) until the left child is a =leaf=. Each rotation step is one
+  constant-time step.
+  #+begin_src racket
+  ;; Type: (-> Queue (Values (-> Any Free) (U Queue #f)))
+  #+end_src
+  Called only on a non-empty queue.
+- =run= realises requirement 1 and 3. Its code changes only in its match of the waiting
+  structure, which now has three fields. A pure result is returned, and a waiting one is passed
+  to the handler as its description and its =k=.
+  #+begin_src racket
+  ;; Type: (-> Free (-> Any (-> Any Free) Free) Any)
+  #+end_src
+- =catch= in =try-catch.rkt= realises requirement 5. Its failure clause matches the three-field
+  structure with one more wildcard. Its waiting clause must not call the constructor with two
+  arguments, so it is rewritten to bind a fresh =perform= to the function that catches the rest.
+  This gives the same observable result:
+  #+begin_src racket
+  ;; Type: (-> Free Free)
+  (define (catch computation)
+      (match computation
+          [(pure value) (return value)]
+          [(impure (failure-effect fallback) _ _) fallback]
+          [(impure eff k _) (>>= (perform eff) (lambda (value) (catch (k value))))]))
+  #+end_src
+
+** Why this shape
+- The old =bind= wraps the continuation again on every bind, so an effect that is under n
+  nested binds passes through n wrappers. The queue appends instead, and a pop costs the
+  same whatever the number of pending binds.
+- =k= stays a one-argument procedure stored in the same field, so the handler contract
+  (=run= passes the description and the continuation) does not change.
+- The queue is immutable and =k= closes over it. A continuation resumed twice therefore
+  gives the same results both times (requirement 2).
+- =perform= no longer stores =return= itself as =k=. Any code that tests =(eq? (impure-k m) return)=
+  would see a difference. The spec does not require it, and no code in the repository does so.
+
+** Effects and the pure/impure boundary
+- The feature has no effects and no outside state. All procedures above are pure, as
+  [[file:../../design/decisions/0001-no-contracts.org][decision 0001]] and =.claude/rules/pure-code.md= require.
+- Continuations supplied by the user, and handlers, run inside =resume= and =run=. An error
+  they raise propagates to the caller, as today (requirement 5). The library holds no state
+  that outlives a call, so a later =run= is unaffected.
+- Inputs that are not free values fail the =match= in =bind= and =run=, as today. That
+  behaviour is kept; the type comments state the precondition.
+
+** Cost
+Measured with the scratch prototype (not in the repository), on the same machine as the old code:
+
+| Case | Old | New prototype |
+|------+-----+---------------|
+| Recursive bracket, depth 1000 / 2000 / 4000 / 8000 | 9 / 38 / 167 / 755 ms | 0 / 0 / 1 / 1 ms |
+| Recursive bracket, depth 16000 | not run | 3 ms |
+| 100 000 left-nested binds on one effect | 6 ms | 9 ms |
+| 100 000 right-nested binds with effects | 3 ms | 4 ms |
+| 100 resumes of one continuation, 20 000 left-nested binds | 23 ms | 54 ms |
+
+In a single resumption, the first pop pays one rotation of the left spine of the queue, and
+every later pop is constant time, so a queue that is resumed once costs time linear in its
+size. Repeated resumption of the same continuation pays that rotation again, because the
+rotated tree is not stored. Today's code pays the full wrapper chain on every resumption.
+
+This repeated-resumption case is the accepted limit (54 ms against 23 ms for 100 resumes at
+depth 20 000). The spec states it under Out of scope. The timing check below (requirement 7)
+applies to single resumption only.
+
+* Implementation checks
+Where each acceptance criterion of the [[file:../../design/features/queue-based-bind.org][spec]] is verified.
+
+- [ ] The existing suite passes after the tests that match or build the structure are updated (see "Deliberate breaks"), and no other expected result changes.
+  Verified by =make test=: the =module+ test= blocks of =freer-monad.rkt=, =try-catch.rkt=, and =effects/*.rkt=.
+- [ ] Mixed computations (effects, failures through =try= and =catch=, =sequence=, =map-m=, =do-m=) give the same result and trace under one handler.
+  Test in =freer-monad.rkt=, as a =module+ test=. The expected results and traces are literal values recorded from the current code (commit =e792cbe=) before the change, not computed by the new code.
+- [ ] Monad law tests pass (existing, in =freer-monad.rkt=), plus a test that grouping nested binds two ways gives the same trace.
+  Verified by =bind=, =return=, =run=.
+- [ ] A computation with 100 000 nested binds runs to completion.
+  Two tests in =freer-monad.rkt=: 100 000 left-nested binds on one effect, and 100 000 right-nested binds with effects. Verified by =bind=, =resume=, =q-append=, =q-pop=.
+- [ ] A waiting computation resumed twice gives the result recorded before the change.
+  Test in =freer-monad.rkt=: a handler that calls =k= twice. Verified by =make-impure=, =resume=.
+- [ ] Errors inside a continuation and inside a handler reach the caller; a following run is unaffected.
+  Tests in =freer-monad.rkt= with =check-exn=, followed by a fresh =run=. Verified by =resume=, =run=.
+- [ ] Reference documentation mentions no unexported accessor (requirement 6).
+  Grep of =scribblings/= for =impure?=, =impure-k= and =impure-description= finds nothing, once the changes under "Deliberate documentation change" are made. Done at implementation time.
+- [ ] A test matches and builds the waiting-computation structure with three fields, and the reference documentation shows the same three fields (spec, Breaking change section and its acceptance criterion).
+  Test in =freer-monad.rkt=: a =perform= result matches =(impure 'd _ (? values))=, and a structure built directly as =(impure 'd k (leaf return))= reads back its description. Verified by =perform=, =make-impure=. The documented fields are checked by inspection of the =defstruct= in =scribblings/eff-monad/core.scrbl= (see "Deliberate documentation change").
+- [ ] Cost independence (requirement 7): for a computation nested to depth n where each level waits for one effect, the median time at 2n is at most 2.5 times the median at n.
+  Test in =freer-monad.rkt=, as a =module+ test=. The computation is a recursion of depth n where each level performs one effect and binds the rest of the computation to its result, and the handler resumes with 0. Each time is the median of 9 runs, with a garbage collection before each run. The test asserts that the median at 2n is at most 2.5 times the median at n, with n = 100 000. The 2.5 bound is the threshold of requirement 7. Verified by =bind=, =resume=, =q-pop=, =make-impure=.
+- [ ] Release (not an acceptance criterion; the spec records the version and migration in its Breaking change section): when the feature is complete and =make test= passes, the bump-version skill is run with the major level. Step 4 checks the Migration subsection of the new entry in =CHANGELOG.md=; step 5 sets =version= in =info.rkt= to =1.0.0=; step 6 adds the =1.0.0= entry to =CHANGELOG.md= with a Breaking group (the waiting structure gains a queue field) and the Migration subsection. Inspection; not verified by this feature's tests.
+
+Checks that exist only because of this design:
+- [ ] Every procedure above has a type comment, and the =module+ test= blocks cover each branch of =resume=, =q-pop= (leaf, left-nested node, right-nested node) and =q-append= (one side empty, both non-empty). Tests check types (decision 0001).
+- [ ] The depth table in "Cost" is re-measured on the implemented code, and the numbers are recorded in this document.
+
+* Deliberate breaks
+These are part of the breaking change. They are fixed in the same change, so the suite compiles and runs.
+
+| File | Where | Change |
+|------+-------+--------|
+| =freer-monad.rkt= | struct =impure=; =perform= (line 57); =bind= (lines 78–79); =run= (line 114); its =module+ test= | three fields; constructor and matches with a queue |
+| =effects/failure-effect.rkt= | test, line 23 | pattern gets a third wildcard |
+| =effects/abort-effect.rkt= | test, line 23 | same |
+| =effects/cmd-effect.rkt= | test, line 73 | same |
+| =effects/http-effect.rkt= | tests, lines 70–86 (five) | same |
+| =effects/id-effect.rkt= | test, line 20 | same |
+| =effects/rnd-effect.rkt= | test, line 28 | same |
+| =effects/log-effect.rkt= | tests, lines 71–80 (four) | same |
+| =try-catch.rkt= | test, line 64; =catch= at lines 70–71 | test pattern gets a third wildcard; =catch= failure clause gets a third wildcard, waiting clause rewritten (see Design) |
+
+The Scribble files that change are listed under "Deliberate documentation change".
+
+Outside this repository, Puzzleten's =generation.rkt= and =profiling.rkt= match and rebuild
+the waiting structure with two fields. They break when they adopt this version; the spec puts that
+update out of scope. The generated HTML under =docs/= and =doc/= is rebuilt from the
+Scribble sources, not edited by hand.
+
+** Deliberate documentation change: predicate and accessors
+The spec requires that the reference documentation no longer documents accessors that are not
+exported (requirement 6). The struct name is exported with its constructor. The predicate and
+the accessors are not, so the documentation must not name them. The change is made at
+implementation time, not in this design. Nothing in =scribblings/= may name =impure?=,
+=impure-k= or =impure-description= afterwards.
+
+The return types and argument types that use =impure?= become =free?=, which is exported and
+has the same test (pure or waiting). The examples that call the two-field constructor are
+rebuilt with the operations.
+
+| File | Where | Change |
+|------+-------+--------|
+| =scribblings/eff-monad/core.scrbl= | =defstruct= of =impure=, lines 19–22 | add a third field, =queue=, with an item describing it; the item names the field, not an accessor |
+| same | =perform= signature, line 46 | return type =impure?= becomes =free?= |
+| same | =perform= text, line 47 | describe the waiting computation's queue (its only pending continuation is =return=) instead of the wrapping |
+| same | ~>>=~ signature, lines 55–57 | =(or/c pure? impure?)= becomes =free?= in the three places |
+| same | ~>>=~ text, line 60 | describe appending to the queue instead of pushing the binding into the continuation |
+| same | example, line 68 | rebuild with =perform= and ~>>=~ in place of the two-argument constructor |
+| same | =run= signature, lines 72–73 | =(or/c pure? impure?)= becomes =free?= in the three places |
+| =scribblings/eff-monad/syntax.scrbl= | example, line 30 | =(perform (ask q))= in place of the two-field constructor |
+| =scribblings/effects/cmd.scrbl= | signature, line 32 | return type =impure?= becomes =free?= |
+| =scribblings/effects/overview.scrbl= | signature, line 27 | same |
+| =scribblings/effects/http.scrbl= | signatures, lines 26, 38, 42, 46, 50 | same |
+
+Prose that says "impure" as an adjective or about the struct (for example "impure structure",
+syntax.scrbl lines 13 and 22) is not an identifier and stays.
+
+* Open questions
+- None.
+
+* Related
+- The [[file:../../design/features/queue-based-bind.org][spec]], [[file:../../design/decisions/0001-no-contracts.org][decision 0001]], and [[file:../../design/decisions/0002-versioning-strategy.org][decision 0002]]. The version (1.0.0) and the migration note are in the =CHANGELOG.md= entry for that release, as decision 0002 requires.
+- [[file:../architecture.org][Code architecture]]: module table, data flow and effects, consistent with this design.
+- Consumers: Puzzleten's =generation.rkt= and =profiling.rkt= (out of scope; see Deliberate breaks).

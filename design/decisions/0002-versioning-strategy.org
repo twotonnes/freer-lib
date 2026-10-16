@@ -1,0 +1,39 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-16
+:END:
+#+TITLE: 0002. Versioning strategy
+
+* Context
+freer-lib was unversioned before this strategy; its state is recorded as the retroactive version 0.0.0. The queue-based bind feature changes a public structure, so its release is a breaking change. Users need to know what a version number means, where it is recorded, and where the changes and migration steps for each release are written.
+
+* Options
+** Option A: Stay unversioned
+Users follow the repository's commits. Breaking changes are found by reading the code, and nothing marks which release a change belongs to. Rejected: a breaking change like queue-based bind would be invisible to users.
+
+** Option B: Major.Minor.Revision with tags, a changelog, and migration notes
+Each release has a number that says what kind of change it contains, a tag on its commit, one changelog entry, and, for a major release, a migration section. Users can tell from the number whether an upgrade is safe.
+
+** Option C: Major.Minor only
+Like option B, without a revision number. Fixes and performance changes would need a minor release, so the minor number would no longer say that the API is unchanged.
+
+* Decision
+We will version freer-lib as Major.Minor.Revision, for example 1.0.0, under these rules:
+- The single source of the version is the =version= field in =info.rkt=.
+- Each release has an annotated git tag =vX.Y.Z= on its release commit on =main=. The tag is created only when the user asks for it.
+- =CHANGELOG.md= has one entry per release, with its changes grouped as Breaking, Added, and Fixed. Empty groups are left out.
+- Each major release has a =Migration= subsection in its entry in =CHANGELOG.md=, with the steps a user takes to move from the previous major version. There is no separate migration file. A major release needs its Migration subsection before it is released.
+- Major: any breaking change to the public API. Minor: backward-compatible additions. Revision: fixes, documentation, and performance changes that keep the API.
+- Before 1.0.0 the library was unversioned. The retroactive version 0.0.0 records the state of =main= at commit =e792cbe=, before this strategy. It has no changes listed. The existing tag =v0.0.0= is kept.
+- The bump-version skill in =.claude/skills/bump-version/= applies this strategy. It does not commit, tag, or push unless the user asks.
+
+* Consequences
+- A version number tells users what kind of upgrade they face.
+- Breaking changes must be written down in the Migration subsection of their major release's entry in =CHANGELOG.md=. Releases with breaking changes are not made without it.
+- Setting a version is a deliberate step, done when a release is complete and tested, and not with each commit.
+- The version is recorded in one place, so the changelog and the tag must be kept in step with it by hand, using the skill.
+- The retroactive 0.0.0 gives the changelog a starting point, but it says nothing about the changes before it.
+
+* Related
+- Feature: [[file:../features/queue-based-bind.org][queue-based bind]], the first release that applies this strategy as 1.0.0.
+- Skill: =.claude/skills/bump-version/SKILL.md=.
