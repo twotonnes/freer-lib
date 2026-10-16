@@ -1,0 +1,31 @@
+:PROPERTIES:
+:STATUS: draft
+:DATE: YYYY-MM-DD
+:SPEC: ../../design/features/short-title.org
+:END:
+#+TITLE: Feature title: detailed design
+
+* Summary
+One or two sentences: how the feature is built, linking its spec.
+
+* Modules and procedures
+Which requirement of the spec is realised by which module and procedure.
+
+| Requirement | Module | Procedure |
+|-------------+--------+-----------|
+
+* Design
+Data structures, procedure signatures and contracts, effects described and how they are
+handled, and the pure/impure boundary ([[file:../../design/decisions/0003-pure-code-and-failure-handling.org][0003]]).
+
+* Implementation checks
+Where each of the spec's acceptance criteria is verified (which tests, which procedures),
+plus checks that exist only because of this design.
+- ...
+
+* Open questions
+- Implementation questions to resolve before the design can be accepted.
+
+* Related
+- The spec, and other detailed designs this depends on or affects.
+- [[file:../architecture.org][Code architecture]]: update it when modules, data flow, or effects change.

@@ -1,0 +1,36 @@
+:PROPERTIES:
+:STATUS: draft
+:DATE: YYYY-MM-DD
+:END:
+#+TITLE: Feature title
+
+* Summary
+One or two sentences: what the feature does and why it's needed.
+
+* Scope
+** In scope
+- What this feature covers.
+
+** Out of scope
+- What this feature explicitly does not cover. Work on these needs a spec change first.
+
+* Requirements
+Numbered, testable statements of the required behaviour, as seen from outside the code.
+1. ...
+
+* Architecture fit
+How the feature fits the [[file:../architecture.org][architecture]]: which components it
+involves, which decisions apply, what is pure and what touches the outside world. Name no
+modules, procedures, or other code constructs; those belong in the detailed design.
+
+* Acceptance criteria
+The checks that must pass before the spec is marked =implemented=. These are the basis
+for the test plan.
+- [ ] ...
+
+* Open questions
+- Questions to resolve before the spec can be accepted.
+
+* Related
+- Decisions and features this depends on or affects.
+- The detailed design: [[file:../../detailed-design/features/short-title.org][Detailed design]].

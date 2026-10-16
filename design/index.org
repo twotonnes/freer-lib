@@ -1,0 +1,53 @@
+#+TITLE: Puzzleten design documentation
+
+...
+
+* Design first
+Features are designed here before they are built, and are built and scoped from what this
+documentation and the detailed design state:
+1. A feature starts as a spec in [[file:features/][features/]] with status =draft=.
+2. The spec is discussed and refined until it's marked =accepted=. Only accepted specs are
+   implemented.
+3. For an accepted spec, a detailed design is written in
+   [[file:../detailed-design/features/][detailed-design/features/]] (see its
+   [[file:../detailed-design/index.org][index]]). It is accepted too before the feature
+   is built.
+4. The spec's requirements and acceptance criteria are the basis for the test plan. Work
+   outside the spec's scope is not done; if it turns out to be needed, the spec is updated
+   (and accepted again) first.
+5. When the feature is built and its tests pass, the spec and its detailed design are
+   marked =implemented=, and the detailed design is made to match the code.
+
+Architectural choices that affect more than one feature are recorded as decisions in
+[[file:decisions/][decisions/]], and [[file:architecture.org][architecture.org]] is kept up to date with the system as designed.
+
+* Contents
+- [[file:architecture.org][Architecture]]: purpose, principles, components, data flow, and effects, without code.
+- [[file:decisions/][Decisions]]: architecture decision records (ADRs), one per decision.
+- [[file:features/][Features]]: functional specs with scope, requirements, and acceptance criteria.
+- [[file:templates/][Templates]]: templates for new decisions and feature specs.
+- [[file:../detailed-design/index.org][Detailed design]]: how the architecture and the specs are realised in code.
+
+* Conventions
+** Status
+Every decision and feature spec has a =STATUS= property in the property drawer at the
+top of the file.
+
+| Document | Statuses                                                          |
+|----------+-------------------------------------------------------------------|
+| Feature  | =draft= → =accepted= → =implemented=; or =rejected=, =superseded= |
+| Decision | =proposed= → =accepted=; or =rejected=, =superseded=              |
+
+Superseded documents are kept, with a =SUPERSEDED-BY= property linking to their
+replacement.
+
+** Naming
+- Decisions: =decisions/NNNN-short-title.org=, numbered in order of creation.
+- Features: =features/short-title.org=. The detailed design has the same name in
+  =detailed-design/features/=.
+
+** Writing
+- New documents start from a copy of the matching template.
+- Link to related decisions, features, and the detailed design with Org file links.
+- Keep specs about behaviour and scope, as seen from outside the code. Modules,
+  procedures, signatures, data structures, and handlers go in the detailed design.

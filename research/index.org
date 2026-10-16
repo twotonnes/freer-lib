@@ -1,0 +1,38 @@
+#+TITLE: Puzzleten research
+
+This directory holds the outcomes of research the user explicitly asked for. It
+informs the specs in [[file:../design/index.org][design/]]; it is not itself a design.
+A research document explains what was found, offers recommendations and scenarios to
+choose from, and leaves the decision to the user. The decision then goes into a spec
+or an ADR.
+
+* When to write one
+Whenever the user explicitly asks to research or investigate something, the outcome
+is written here as an Org document, in addition to being reported in the conversation.
+Don't create one for questions that are quickly answered in conversation or for
+investigations done as a step of other work.
+
+* Conventions
+- File name: =short-title.org=, with the topic as title (e.g. =disabling-contracts.org=).
+- Properties drawer at the top with =DATE= (today) and =STATUS=:
+  =draft= (still being written), =final= (complete, awaiting or informing a decision),
+  or =superseded= (with =SUPERSEDED-BY=).
+- Sections, skipping the ones that don't apply:
+  1. *Question*: what was asked and why, in one or two sentences.
+  2. *Summary*: the answer and the recommendation, short enough to read alone.
+  3. *Findings*: what was found, with evidence (measurements, source and documentation
+     references, how an experiment was run), so it can be checked or repeated.
+  4. *Scenarios*: the realistic options to choose from, each with what it takes, what
+     it gains, what it costs or risks, and its measured effect where there is one.
+  5. *Recommendation*: which scenario to take and under which conditions another is better.
+  6. *Open questions*: what the user must decide or what could not be established.
+  7. *Related*: links to specs, decisions, and other research.
+- Separate what was measured or read from what is inferred, and say how reliable the
+  numbers are (machine, repetitions, noise).
+- Don't change the code base as part of research. Experiments run on scratch copies;
+  report anything that needs a change as a recommendation.
+- Supporting files (scripts, raw output) go in =data/<title>/=, and the document says how to repeat the measurements.
+- Link to the research from the spec it informs, once there is one.
+
+* Contents
+- [[file:disabling-contracts.org][Disabling contracts]]: how much contracts cost and how to remove or limit that cost.

@@ -1,0 +1,12 @@
+#+TITLE: Architecture
+
+* Purpose
+
+* Principles
+
+* Components
+
+* Data flow
+
+* Effects
+
