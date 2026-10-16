@@ -1,0 +1,39 @@
+#+TITLE: Puzzleten detailed design
+
+...
+
+* Detailed design first
+A feature's detailed design is written after its spec is accepted and before it is built:
+1. A detailed design starts in [[file:features/][features/]] with status =draft=, linking
+   its spec through the =SPEC= property.
+2. It is refined until the user marks it =accepted=. Only accepted designs are
+   implemented. The code is built within the spec's scope and as the detailed design
+   states.
+3. If the implementation has to deviate from the detailed design, the design is updated
+   first (and accepted again); if it would deviate from the spec, the spec is.
+4. When the feature is built and its tests pass, the detailed design is marked
+   =implemented= and [[file:architecture.org][architecture.org]] is updated. A detailed
+   design of an =implemented= feature describes the code as it is, and is kept aligned
+   with it.
+
+* Contents
+- [[file:architecture.org][Code architecture]]: the module table, data flow, and effect-to-handler map, and how the
+  decisions show up in code. Keep it in sync with the code.
+- [[file:features/][Features]]: one detailed design per feature spec.
+- [[file:templates/][Templates]]: the template for a new detailed design.
+
+* Conventions
+** Status
+Every detailed design has a =STATUS= property in the property drawer at the top of the
+file, and a =SPEC= property linking its spec: =draft= → =accepted= → =implemented=; or
+=superseded=, with a =SUPERSEDED-BY= property.
+
+** Naming
+- =features/short-title.org=, the same name as the spec in =design/features/=.
+
+** Writing
+- New documents start from a copy of [[file:templates/feature.org][the template]].
+- Name modules and procedures, and say which requirement of the spec each realises.
+- Follow the project's rules in =.claude/rules/=: pure code, and freer-lib effects.
+- Keep it to what the code and the Scribble documentation don't already say: the
+  reasons for the shape of the code and where each requirement is verified.
