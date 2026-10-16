@@ -42,7 +42,7 @@ This module provides effects for executing shell commands and capturing their ou
 }
 
 @defproc[(execute-command [command string?]) cmd-result?]{
-  The default implementation for executing commands. It attempts to run the @racket[command] string using the system's shell (specifically targeting PowerShell on Windows environments).
+  The default implementation for executing commands. It attempts to run the @racket[command] string using the system's shell: PowerShell (@racket["powershell.exe" "-Command"]) on Windows, and @racket["sh" "-c"] on all other platforms.
   
   @itemlist[
     @item{@emph{Success}: Returns a @racket[cmd-result] structure containing the output, error output, and exit code.}
