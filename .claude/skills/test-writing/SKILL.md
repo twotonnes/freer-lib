@@ -5,6 +5,10 @@ description: Use this skill whenever writing tests for this code project.
 
 # Test writing conventions
 - Write tests per procedure. Cover the happy path, each failure path, and each edge case.
+- The project uses no runtime contracts, so tests are the only check on types. For each procedure:
+  - Pass arguments of every type its type comment allows, including the edge cases of each type.
+  - Check that the result has the type in the comment.
+  - Cover every branch of the procedure.
 - Put each test in a `(module+ test ...)` block in the same source file as the procedure it tests.
 - Use `rackunit` for every test.
 - Name each test `"<procedure>: should <expected> when <condition>"`, for example `"my-procedure: should return 1 when applied"`.

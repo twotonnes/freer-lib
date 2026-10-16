@@ -12,19 +12,18 @@ paths:
 - Raise exceptions: `error`, `raise`, failing `match`, or `car`, `vector-ref`, `integer->char` on invalid input. Also do not let exceptions from called procedures escape.
 - Use randomness, the clock, I/O, or other outside state: `random`, `current-seconds`, `printf`.
 - Mutate state: `set!`, `hash-set!`, `vector-set!`, mutable hashes.
+- Use runtime contracts (`define/contract`, `->`, `->i`, `provide/contract`). See [[file:../../design/decisions/0001-no-contracts.org][decision 0001]].
 
 ## Use these instead
 - Describe outside interactions as effects with freer-lib: `rnd` instead of `random`, `log-inf` instead of `printf`.
 - Describe failures as values or effects, such as a `failure` effect, instead of exceptions.
 - Wrap calls that can raise, such as `/` on zero, in `with-handlers`, and return the result as a value.
 - Pass state through arguments and return values, for example an immutable hash. For state-only effects such as an environment, write a pure handler that takes a computation and returns a computation, threading the state through its recursion.
-- Reject invalid input with contracts, so the body may assume valid input.
+- Write each procedure's type as a comment directly above its definition, for example `;; Type: (-> Integer Integer)`. The code-writer does this for every procedure.
+- Write tests that pass arguments of the types the comment allows, and cover every branch. Tests are the only check on types.
 
-Pure code may raise only on runtime contract violations. State preconditions with precise contracts, including dependent `->i` contracts.
-
-## Contracts or failure values
-- Use a contract for a precondition that every correct caller satisfies. A violation then means a bug in the caller.
-- Use a failure value or monad for a failure that can happen with valid input, such as a lookup that finds nothing. Use freer-lib's `failure` effect or `try`/`catch`, so callers handle it.
+## Failure values
+- Return a failure value or a monad for a failure that can happen with valid input, such as a lookup that finds nothing. Use freer-lib's `failure` effect or `try`/`catch`, so callers handle it.
 - Do not make a procedure monadic only to avoid an exception. If a plain failure value works and its callers already handle it, return the value, as `evaluate-program` returns an `evaluation-failure`.
 - Describe every outside interaction as an effect.
 
