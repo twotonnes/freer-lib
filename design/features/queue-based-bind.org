@@ -111,7 +111,7 @@ so each doubling of depth multiplies the time by about 4.3.
   to run the computation at depth 2n is at most 2.5 times the median time at depth n, over
   repeated runs (requirement 7).
 - [ ] The Cost table in the detailed design is re-measured on the implemented code. Not done; it is a measurement, not covered by the tests.
-- [ ] Release: version 1.0.0 is set and the changelog has an entry with a Migration subsection (Breaking change section). Not done; it is a release step outside the tests.
+- [x] Release: version 1.0.0 is set and the changelog has an entry with a Migration subsection (Breaking change section). Done in commit 8f450d8.
 
 * Open questions
 - None.

@@ -13,8 +13,8 @@ Within an entry, changes are grouped as **Breaking**, **Added**, and **Fixed**. 
 ### Migration
 
 - Patterns that match `impure` (from `freer-monad.rkt`) must have three sub-patterns, not two. Change `(impure description k)` to `(impure description k _)`. The compiler rejects the two-field form with "insufficient number of fields".
-- Calls that build `impure` directly, such as `(impure description k)`, must be replaced with `(perform description)`. The queue field cannot be supplied from outside the module.
-- `equal?` on two `impure` values made by separate `perform` calls is now `#f`; it was `#t`. Compare `impure-description` values or use `match` instead.
+- Calls that build `impure` directly, such as `(impure description k)`, must be replaced with `(perform description)`. The three-field constructor is still exported, but supplying a queue is unsupported and nothing checks it.
+- `equal?` on two `impure` values made by separate `perform` calls is now `#f`; it was `#t`. Match the `impure` pattern and compare its fields instead.
 
 ## 0.0.0 (2026-10-16, retroactive)
 

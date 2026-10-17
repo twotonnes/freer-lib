@@ -6,7 +6,7 @@
 #+TITLE: Queue-based bind: detailed design
 
 * Summary
-Implemented; the code and its tests match this document. The only open items are the Cost re-measure and the release step.
+Implemented; the code and its tests match this document. The only open item is the Cost re-measure. The release step is done (commit 8f450d8).
 
 A waiting computation (=impure=) keeps its pending continuations in a queue, a third field
 of the structure, instead of wrapping its continuation again on every bind. Bind appends one
@@ -21,7 +21,7 @@ The files this design changes are:
   =effects/http-effect.rkt=, =effects/id-effect.rkt=, =effects/rnd-effect.rkt= and =effects/log-effect.rkt=,
   listed under "Deliberate breaks".
 - The Scribble files listed under "Deliberate documentation change".
-- At release, =info.rkt= and =CHANGELOG.md=, set by the bump-version skill (see the release check below).
+- At release (done, commit 8f450d8), =info.rkt= and =CHANGELOG.md=, set by the bump-version skill (see the release check below).
 
 Requirement numbers refer to the [[file:../../design/features/queue-based-bind.org][spec]].
 
@@ -200,7 +200,7 @@ Where each acceptance criterion of the [[file:../../design/features/queue-based-
   Test in =freer-monad.rkt=: a =perform= result matches =(impure 'd _ (? values))=, and a structure built directly as =(impure 'd k (leaf return))= reads back its description. Verified by =perform=, =make-impure=. The documented fields are checked by inspection of the =defstruct= in =scribblings/eff-monad/core.scrbl= (see "Deliberate documentation change").
 - [x] Cost independence (requirement 7): for a computation nested to depth n where each level waits for one effect, the median time at 2n is at most 2.5 times the median at n.
   Test in =freer-monad.rkt=, as a =module+ test=. The computation is a recursion of depth n where each level performs one effect and binds the rest of the computation to its result, and the handler resumes with 0. Each time is the median of 9 runs, with a garbage collection before each run. The test asserts that the median at 2n is at most 2.5 times the median at n, with n = 100 000. Verified by the test "bind: should take a median run time at depth 2n ..." (case 93), which passed. The 2.5 bound is the threshold of requirement 7. Verified by =bind=, =resume=, =q-pop=, =make-impure=.
-- [ ] Release (open: not done; not an acceptance criterion; the spec records the version and migration in its Breaking change section): when the feature is complete and =make test= passes, the bump-version skill is run with the major level. Step 4 checks the Migration subsection of the new entry in =CHANGELOG.md=; step 5 sets =version= in =info.rkt= to =1.0.0=; step 6 adds the =1.0.0= entry to =CHANGELOG.md= with a Breaking group (the waiting structure gains a queue field) and the Migration subsection, which also notes that =equal?= on two waiting computations from separate =perform= calls is now =#f=. Inspection; not verified by this feature's tests.
+- [x] Release (done in commit 8f450d8; =info.rkt= has version 1.0.0 and =CHANGELOG.md= has the 1.0.0 entry with its Migration subsection; the spec records the version and migration in its Breaking change section): when the feature is complete and =make test= passes, the bump-version skill is run with the major level. Step 4 checks the Migration subsection of the new entry in =CHANGELOG.md=; step 5 sets =version= in =info.rkt= to =1.0.0=; step 6 adds the =1.0.0= entry to =CHANGELOG.md= with a Breaking group (the waiting structure gains a queue field) and the Migration subsection, which also notes that =equal?= on two waiting computations from separate =perform= calls is now =#f=. Inspection; not verified by this feature's tests.
 
 Checks that exist only because of this design:
 - [x] Every procedure above has a type comment, and the =module+ test= blocks cover each branch of =resume=, =q-pop= (leaf, left-nested node, right-nested node) and =q-append= (one side empty, both non-empty). Tests check types (decision 0001).
