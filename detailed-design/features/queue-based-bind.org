@@ -6,7 +6,7 @@
 #+TITLE: Queue-based bind: detailed design
 
 * Summary
-Implemented; the code and its tests match this document. The only open item is the Cost re-measure. The release step is done (commit 8f450d8).
+Implemented; the code and its tests match this document. The Cost table was re-measured on the implemented code on 2026-10-17, and no item is open. The release step is done (commit 8f450d8).
 
 A waiting computation (=impure=) keeps its pending continuations in a queue, a third field
 of the structure, instead of wrapping its continuation again on every bind. Bind appends one
@@ -160,22 +160,27 @@ not listed are unchanged: =free?=, =do-m=, =sequence=, =map-m=. =bind= is not ex
   behaviour is kept; the type comments state the precondition.
 
 ** Cost
-Historical measurements, as measured with the scratch prototype (not in the repository) on the same machine as the old code, before the change. They have not been re-measured on the implemented code (open):
+Re-measured on the implemented code (commit abb043a) on 2026-10-17, against the old code (commit e792cbe). Times are in ms: the median of 9 timed runs after 1 warm-up, with a garbage collection before each run.
 
-| Case | Old | New prototype |
-|------+-----+---------------|
-| Recursive bracket, depth 1000 / 2000 / 4000 / 8000 | 9 / 38 / 167 / 755 ms | 0 / 0 / 1 / 1 ms |
-| Recursive bracket, depth 16000 | not run | 3 ms |
-| 100 000 left-nested binds on one effect | 6 ms | 9 ms |
-| 100 000 right-nested binds with effects | 3 ms | 4 ms |
-| 100 resumes of one continuation, 20 000 left-nested binds | 23 ms | 54 ms |
+| Case | Old (e792cbe) | New (abb043a, implemented code) |
+|------+---------------+---------------------------------|
+| Recursive bracket, depth 1000 | 4.62 | 0.18 |
+| Recursive bracket, depth 2000 | 19.32 | 0.35 |
+| Recursive bracket, depth 4000 | 82.64 | 0.68 |
+| Recursive bracket, depth 8000 | 373.09 | 1.37 |
+| Recursive bracket, depth 16000 | not run | 3.46 |
+| 100 000 left-nested binds on one effect | 5.62 | 8.61 |
+| 100 000 right-nested binds with effects | 2.40 | 4.37 |
+| 100 resumes of one continuation, 20 000 left-nested binds | 17.90 | 53.11 |
+
+Method: Intel Core i7-8565U, 1.80 GHz, 8 cores, Racket v9.3 CS, measured with a scratch script outside the repository. The recursive bracket case is the nested shape of the requirement-7 test. The 100 000 right-nested case is a chain of =(perform 'e)= bound to a function that returns the next step. The resumption case times only the 100 calls to the captured continuation. The earlier prototype figures were about half of these, so they came from another run.
 
 In a single resumption, the first pop pays one rotation of the left spine of the queue, and
 every later pop is constant time, so a queue that is resumed once costs time linear in its
 size. Repeated resumption of the same continuation pays that rotation again, because the
 rotated tree is not stored. Today's code pays the full wrapper chain on every resumption.
 
-This repeated-resumption case is the accepted limit (54 ms against 23 ms for 100 resumes at
+This repeated-resumption case is the accepted limit (53 ms against 18 ms for 100 resumes at
 depth 20 000). The spec states it under Out of scope. The timing check below (requirement 7)
 applies to single resumption only.
 
@@ -204,7 +209,7 @@ Where each acceptance criterion of the [[file:../../design/features/queue-based-
 
 Checks that exist only because of this design:
 - [x] Every procedure above has a type comment, and the =module+ test= blocks cover each branch of =resume=, =q-pop= (leaf, left-nested node, right-nested node) and =q-append= (one side empty, both non-empty). Tests check types (decision 0001).
-- [ ] The depth table in "Cost" is re-measured on the implemented code, and the numbers are recorded in this document. Open: not done; the table still holds the prototype measurements.
+- [x] The depth table in "Cost" is re-measured on the implemented code, and the numbers are recorded in this document. Done on 2026-10-17 (commit abb043a).
 
 * Deliberate breaks
 These are part of the breaking change. They are fixed in the same change, so the suite compiles and runs.
