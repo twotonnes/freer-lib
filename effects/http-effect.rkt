@@ -67,20 +67,20 @@
 
   (test-case "http-get: should perform a GET http-effect with no data"
     (check-match (http-get "http://example.com/a" '("Accept: text/plain"))
-                 (impure (http-effect _ 'GET '("Accept: text/plain") #f) _)))
+                 (impure (http-effect _ 'GET '("Accept: text/plain") #f) _ _)))
 
   (test-case "http-delete: should perform a DELETE http-effect with no data"
     (check-match (http-delete "http://example.com/a" '())
-                 (impure (http-effect _ 'DELETE '() #f) _)))
+                 (impure (http-effect _ 'DELETE '() #f) _ _)))
 
   (test-case "http-post: should perform a POST http-effect with the data"
     (check-match (http-post "http://example.com/a" '() "body")
-                 (impure (http-effect _ 'POST '() "body") _)))
+                 (impure (http-effect _ 'POST '() "body") _ _)))
 
   (test-case "http-put: should perform a PUT http-effect with the data"
     (check-match (http-put "http://example.com/a" '() #"body")
-                 (impure (http-effect _ 'PUT '() #"body") _)))
+                 (impure (http-effect _ 'PUT '() #"body") _ _)))
 
   (test-case "http-patch: should perform a PATCH http-effect with the data"
     (check-match (http-patch "http://example.com/a" '() "body")
-                 (impure (http-effect _ 'PATCH '() "body") _))))
+                 (impure (http-effect _ 'PATCH '() "body") _ _))))

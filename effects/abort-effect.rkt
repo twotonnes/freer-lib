@@ -20,7 +20,7 @@
     "../freer-monad.rkt")
 
   (test-case "abort: should perform an abort-effect"
-    (check-match (abort) (impure (abort-effect) _)))
+    (check-match (abort) (impure (abort-effect) _ _)))
 
   (test-case "abort: should stop the computation when the handler does not resume"
     ;; Given

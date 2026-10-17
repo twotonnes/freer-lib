@@ -68,16 +68,16 @@
     "../freer-monad.rkt")
 
   (test-case "log-inf: should perform an INFO log-effect with the message formatted"
-    (check-match (log-inf "x ~a" 1) (impure (log-effect 'INFO "x 1") _)))
+    (check-match (log-inf "x ~a" 1) (impure (log-effect 'INFO "x 1") _ _)))
 
   (test-case "log-dbg: should perform a DEBUG log-effect"
-    (check-match (log-dbg "d") (impure (log-effect 'DEBUG "d") _)))
+    (check-match (log-dbg "d") (impure (log-effect 'DEBUG "d") _ _)))
 
   (test-case "log-err: should perform an ERROR log-effect"
-    (check-match (log-err "e") (impure (log-effect 'ERROR "e") _)))
+    (check-match (log-err "e") (impure (log-effect 'ERROR "e") _ _)))
 
   (test-case "log-inf: should keep the message unchanged when no arguments are given"
-    (check-match (log-inf "100% ~ done") (impure (log-effect 'INFO "100% ~ done") _)))
+    (check-match (log-inf "100% ~ done") (impure (log-effect 'INFO "100% ~ done") _ _)))
 
   (test-case "write-log: should raise an error that names the failure when the display procedure fails"
     (check-exn #rx"error handling log effect"

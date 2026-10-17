@@ -27,7 +27,7 @@ To simplify the composition of impures, the library provides standard syntactic 
   @examples[#:eval freer-lib-eval
     ;; Define a basic "Ask" impure
     (struct ask (question))
-    (define (ask-user q) (impure (ask q) return))
+    (define (ask-user q) (perform (ask q)))
 
     ;; A computation that asks two questions and combines the results
     (define survey-computation

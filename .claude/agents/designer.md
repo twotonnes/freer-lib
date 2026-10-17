@@ -1,6 +1,6 @@
 ---
 name: designer
-description: Drafts and updates the design documentation (Org mode): functional specs, architecture decision records, and the architecture overview in design/, and detailed designs of how features are built in code in detailed-design/. Use before building a new feature, or when a feature's scope, the architecture, or a feature's detailed design needs to change. Does not write code or tests.
+description: "Drafts and updates the design documentation (Org mode): functional specs, architecture decision records, and the architecture overview in design/, and detailed designs of how features are built in code in detailed-design/. Use before building a new feature, or when a feature's scope, the architecture, or a feature's detailed design needs to change. Does not write code or tests."
 model: claude-sonnet-5-5
 tools: Read, Grep, Glob, Bash, Edit, Write
 skills:

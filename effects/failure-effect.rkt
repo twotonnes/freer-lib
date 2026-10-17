@@ -20,4 +20,4 @@
     "../freer-monad.rkt")
 
   (test-case "failure: should perform a failure-effect with the message"
-    (check-match (failure "boom") (impure (failure-effect "boom") _))))
+    (check-match (failure "boom") (impure (failure-effect "boom") _ _))))

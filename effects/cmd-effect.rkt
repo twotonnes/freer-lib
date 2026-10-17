@@ -70,7 +70,7 @@
     "../freer-monad.rkt")
 
   (test-case "cmd: should perform a cmd-effect with the command"
-    (check-match (cmd "echo hi") (impure (cmd-effect "echo hi") _)))
+    (check-match (cmd "echo hi") (impure (cmd-effect "echo hi") _ _)))
 
   (test-case "find-shell-path: should return a path to an existing shell"
     (check-true (file-exists? (find-shell-path))))

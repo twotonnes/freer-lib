@@ -29,7 +29,7 @@ This module provides effects for executing shell commands and capturing their ou
   ]
 }
 
-@defproc[(cmd [command string?]) impure?]{
+@defproc[(cmd [command string?]) free?]{
   Creates an effect that requests the execution of @racket[command].
 
   @examples[#:eval cmd-eval

@@ -17,7 +17,7 @@
   (require rackunit)
 
   (test-case "id: should perform an id-effect with the value"
-    (check-match (id 5) (impure (id-effect 5) _)))
+    (check-match (id 5) (impure (id-effect 5) _ _)))
 
   (test-case "id: should return the value the handler passes back"
     (check-equal? (run (id 5) (lambda (eff k) (k (id-effect-value eff)))) 5)))

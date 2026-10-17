@@ -25,7 +25,7 @@
     "../freer-monad.rkt")
 
   (test-case "rnd: should perform an rnd-effect with the bounds"
-    (check-match (rnd 1 6) (impure (rnd-effect 1 6) _)))
+    (check-match (rnd 1 6) (impure (rnd-effect 1 6) _ _)))
 
   (test-case "do-rnd: should return values within [min, max) for every sample"
     ;; Given

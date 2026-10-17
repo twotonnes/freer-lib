@@ -61,14 +61,14 @@
                         [_ (error (format "the effect handler was called with ~v" eff))]))))
 
         ;; Then
-        (check-match result (impure 'fallback-effect _))))
+        (check-match result (impure 'fallback-effect _ _))))
 
 ;; Type: (-> Free Free)
 (define (catch computation)
     (match computation
         [(pure value) (return value)]
-        [(impure (failure-effect fallback) _) fallback]
-        [(impure eff k) (impure eff (lambda (value) (catch (k value))))]))
+        [(impure (failure-effect fallback) _ _) fallback]
+        [(impure eff k _) (>>= (perform eff) (lambda (value) (catch (k value))))]))
 
 (module+ test
     (require
@@ -181,3 +181,113 @@
 
         ;; Then
         (check-equal? result 9)))
+
+(module+ test
+    (require rackunit)
+
+    (define (traced-run m answer)
+        (define trace '())
+        (define result
+            (run m (lambda (d k)
+                      (set! trace (cons d trace))
+                      (answer d k))))
+        (values result (reverse trace)))
+
+    (test-case "catch: should return the fallback unchanged when the first effect is a failure-effect"
+        (define fb (return 'fb))
+        (check-eq? (catch (perform (failure-effect fb))) fb))
+
+    (test-case "catch: should discard the pending functions when the failure-effect has pending binds"
+        (define c
+            (>>= (perform (failure-effect (return 'fb)))
+                 (lambda (_) (error "must not run"))))
+        (check-equal? (run (catch c) (lambda (d k) (error "handler should not be called"))) 'fb))
+
+    (test-case "catch: should return a waiting computation with the same description when the first effect is not a failure"
+        (check-match (catch (perform 'a)) (impure 'a _ _)))
+
+    (test-case "catch: should catch a failure after the effect is resumed when the continuation fails"
+        (define c
+            (>>= (perform 'a)
+                 (lambda (v) (try (return #f) (return 'fb)))))
+        (check-equal? (run (catch c) (lambda (d k) (k 7))) 'fb))
+
+    (test-case "catch: should short-circuit at the failure and keep the earlier trace when a failure follows several effects"
+        (define c
+            (do-m [_ <- (perform 'p)]
+                  [_ <- (perform 'q)]
+                  [_ <- (try (return #f) (return 'fb))]
+                  (perform 'r)))
+        (define-values (r t) (traced-run (catch c) (lambda (d k) (k 0))))
+        (check-equal? r 'fb)
+        (check-equal? t '(p q)))
+
+    (test-case "catch: should catch the failure when three binds are nested to the left on a waiting computation"
+        (define f3-called #f)
+        (define c
+            (>>= (>>= (>>= (perform 'a)
+                           (lambda (x) (return x)))
+                      (lambda (x) (try (return #f) (return 'fb))))
+                 (lambda (x) (set! f3-called #t) (return x))))
+        (check-equal? (run (catch c) (lambda (d k) (k 1))) 'fb)
+        (check-false f3-called))
+
+    (test-case "catch: should raise exn:fail when the computation is not a free value"
+        (check-exn exn:fail? (lambda () (catch 5))))
+
+    (test-case "catch: should raise the continuation's error and leave later runs unaffected when a pending function raises"
+        (define (h d k) (k 1))
+        (check-exn #rx"boom"
+                   (lambda ()
+                       (run (catch (>>= (perform 'a) (lambda (x) (error "boom")))) h)))
+        (check-equal? (run (catch (>>= (perform 'a) (lambda (x) (return (+ x 1))))) h) 2))
+
+    (test-case "catch: should complete when 1000 effects are nested to the right and none fails"
+        (define (loop n)
+            (if (zero? n)
+                (return 0)
+                (do-m [_ <- (perform 'tick)]
+                      [r <- (loop (sub1 n))]
+                      (return (add1 r)))))
+        (check-equal? (run (catch (loop 1000)) (lambda (d k) (k 0))) 1000))
+
+    (test-case "catch: should give the recorded results when a handler resumes a catch computation's k twice (R4)"
+        (define trace '())
+        (define (h d k)
+            (set! trace (cons d trace))
+            (match d
+                ['dup (return (list (run (k 1) h) (run (k #f) h)))]))
+        (define result
+            (run (catch (do-m [x <- (perform 'dup)]
+                              [y <- (try (return x) (return 'fb))]
+                              (return (list x y))))
+                 h))
+        (check-equal? result '((1 1) fb))
+        (check-equal? (reverse trace) '(dup)))
+
+    (test-case "catch: should give the recorded result and trace when an effect precedes a failure with an effectful fallback (M2)"
+        (define-values (r t)
+            (traced-run (catch (do-m [x <- (perform 'p)]
+                                     [y <- (try (return #f) (perform 'fallback-eff))]
+                                     (perform 'q)
+                                     (return (list x y))))
+                        (lambda (d k) (k (case d [(p) 1] [(fallback-eff) 9] [(q) 2])))))
+        (check-equal? r 9)
+        (check-equal? t '(p fallback-eff)))
+
+    (test-case "catch: should give the recorded result and trace when map-m over a list fails at the second element (M5)"
+        (define-values (r t)
+            (traced-run (catch (map-m (lambda (n) (try (perform (list 'check n)) (return 'bad)))
+                                      '(1 2 3)))
+                        (lambda (d k) (k (not (equal? d '(check 2)))))))
+        (check-equal? r 'bad)
+        (check-equal? t '((check 1) (check 2))))
+
+    (test-case "catch: should give the recorded result and trace when a catch is nested in a catch and a sequence follows (M6)"
+        (define-values (r t)
+            (traced-run (catch (do-m [x <- (catch (try (return #f) (return 'inner-fb)))]
+                                     [y <- (sequence (list (perform 'z) (perform 'z)))]
+                                     (return (list x y))))
+                        (lambda (d k) (k 5))))
+        (check-equal? r '(inner-fb (5 5)))
+        (check-equal? t '(z z))))

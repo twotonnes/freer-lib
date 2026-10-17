@@ -24,7 +24,7 @@ To understand how these standard effects work, consider the simplest one: the Id
   A descriptor that simply holds a value.
 }
 
-@defproc[(id [v any/c]) impure?]{
+@defproc[(id [v any/c]) free?]{
   Constructs an effect that wraps @racket[v].
 }
 

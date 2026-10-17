@@ -1,5 +1,5 @@
 :PROPERTIES:
-:STATUS: accepted
+:STATUS: implemented
 :DATE: 2026-10-16
 :END:
 #+TITLE: Queue-based bind
@@ -91,25 +91,27 @@ so each doubling of depth multiplies the time by about 4.3.
   own and touches no outside world.
 
 * Acceptance criteria
-- [ ] The existing test suite passes after the tests that match or build the waiting-computation
+- [x] The existing test suite passes after the tests that match or build the waiting-computation
   structure are updated for its new shape, and no other expected result changes.
-- [ ] A test runs a set of computations mixing effects, failures, sequencing, and mapping
+- [x] A test runs a set of computations mixing effects, failures, sequencing, and mapping
   under one handler both before and after the change, and their results and effect traces
   are the same.
-- [ ] The monad law tests from the current test suite pass, plus a test that grouping
+- [x] The monad law tests from the current test suite pass, plus a test that grouping
   nested binds two ways gives the same trace.
-- [ ] A test runs a computation with 100 000 nested binds to completion.
-- [ ] A test resumes a waiting computation twice and checks the result matches the
+- [x] A test runs a computation with 100 000 nested binds to completion.
+- [x] A test resumes a waiting computation twice and checks the result matches the
   behaviour recorded before the change.
-- [ ] Errors raised inside a continuation and inside a handler reach the caller, and a
+- [x] Errors raised inside a continuation and inside a handler reach the caller, and a
   following run in the same process is unaffected.
-- [ ] The reference documentation mentions no accessor of the waiting-computation structure that
+- [x] The reference documentation mentions no accessor of the waiting-computation structure that
   is not exported (requirement 6), checked by inspection.
-- [ ] A test matches and builds the waiting-computation structure with three fields, and the
+- [x] A test matches and builds the waiting-computation structure with three fields, and the
   reference documentation shows the same three fields (Breaking change section).
-- [ ] For computations nested to depth n, where each level waits for one effect, the median time
+- [x] For computations nested to depth n, where each level waits for one effect, the median time
   to run the computation at depth 2n is at most 2.5 times the median time at depth n, over
   repeated runs (requirement 7).
+- [ ] The Cost table in the detailed design is re-measured on the implemented code. Not done; it is a measurement, not covered by the tests.
+- [ ] Release: version 1.0.0 is set and the changelog has an entry with a Migration subsection (Breaking change section). Not done; it is a release step outside the tests.
 
 * Open questions
 - None.

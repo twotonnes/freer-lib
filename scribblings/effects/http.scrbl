@@ -23,7 +23,7 @@ This module provides effects for performing HTTP network requests.
   The descriptor containing all necessary information to perform a request.
 }
 
-@defproc[(http-get [url string?] [headers (listof string?)]) impure?]{
+@defproc[(http-get [url string?] [headers (listof string?)]) free?]{
   Creates a GET request effect.
 
   @examples[#:eval http-eval
@@ -35,19 +35,19 @@ This module provides effects for performing HTTP network requests.
   ]
 }
 
-@defproc[(http-post [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) impure?]{
+@defproc[(http-post [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) free?]{
   Creates a POST request effect.
 }
 
-@defproc[(http-put [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) impure?]{
+@defproc[(http-put [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) free?]{
   Creates a PUT request effect.
 }
 
-@defproc[(http-patch [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) impure?]{
+@defproc[(http-patch [url string?] [headers (listof string?)] [body (or/c bytes? string?)]) free?]{
   Creates a PATCH request effect.
 }
 
-@defproc[(http-delete [url string?] [headers (listof string?)]) impure?]{
+@defproc[(http-delete [url string?] [headers (listof string?)]) free?]{
   Creates a DELETE request effect.
 }
 
