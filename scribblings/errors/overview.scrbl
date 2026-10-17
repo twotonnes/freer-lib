@@ -18,17 +18,9 @@ The library has no @tt{Maybe} or @tt{Either} values. Errors are either effects (
 
 @subsection{The failure effect}
 
-@defmodule[freer-lib/effects/failure-effect]
+The @racket[failure] procedure and the @racket[failure-effect] struct live in the module @racketmodname[freer-lib/effects/failure-effect]; see @secref["Failure Effect"] for their documentation.
 
-@defstruct[failure-effect ([msg any/c])]{
-  An effect descriptor that carries a failure message.
-}
-
-@defproc[(failure [msg string?]) free?]{
-  Describes a failure with the message @racket[msg] by performing a @racket[failure-effect].
-
-  There is no default handler. The handler that you pass to @racket[run] decides what a failure means: raise an error, stop with a value, or recover.
-}
+There is no default handler. The handler that you pass to @racket[run] decides what a failure means.
 
 @examples[#:eval err-eval
   (define (safe-div a b)

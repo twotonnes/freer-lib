@@ -8,7 +8,7 @@
 @(define std-eval (make-base-eval))
 @interaction-eval[#:eval std-eval (require racket freer-lib)]
 
-@title{Failure Effect}
+@title[#:tag "Failure Effect"]{Failure Effect}
 
 @defmodule[freer-lib/effects/failure-effect]
 
