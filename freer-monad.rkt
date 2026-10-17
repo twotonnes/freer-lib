@@ -386,6 +386,19 @@
 
 (module+ test
   (require rackunit)
+  (module test-support racket/base
+    (require (submod ".." ".."))
+    (provide traced-run)
+
+    ;; Runs m, answering each effect with (answer description k); returns (values result trace).
+    (define (traced-run m answer)
+      (define trace '())
+      (define result
+        (run m (lambda (d k)
+                 (set! trace (cons d trace))
+                 (answer d k))))
+      (values result (reverse trace))))
+  (require (submod "." test-support))
 
   ;; Returns the functions of a queue in order.
   (define (drain q)
@@ -394,15 +407,6 @@
         (if rest
             (loop rest (cons f acc))
             (reverse (cons f acc))))))
-
-  ;; Runs m, answering each effect with (answer description k); returns (values result trace).
-  (define (traced-run m answer)
-    (define trace '())
-    (define result
-      (run m (lambda (d k)
-               (set! trace (cons d trace))
-               (answer d k))))
-    (values result (reverse trace)))
 
   (define (no-handler d k) (error "handler should not be called"))
   (define (inc x) (return (+ x 1)))

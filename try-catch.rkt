@@ -183,15 +183,7 @@
         (check-equal? result 9)))
 
 (module+ test
-    (require rackunit)
-
-    (define (traced-run m answer)
-        (define trace '())
-        (define result
-            (run m (lambda (d k)
-                      (set! trace (cons d trace))
-                      (answer d k))))
-        (values result (reverse trace)))
+    (require rackunit (submod "freer-monad.rkt" test test-support))
 
     (test-case "catch: should return the fallback unchanged when the first effect is a failure-effect"
         (define fb (return 'fb))
