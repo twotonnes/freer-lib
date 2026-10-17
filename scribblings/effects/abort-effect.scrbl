@@ -14,7 +14,7 @@
 
 The abort effect allows computations to signal immediate termination without producing a value.
 
-@defstruct[abort-effect () #:transparent]{
+@defstruct[abort-effect ()]{
   An effect descriptor that represents an abort signal. The struct has no fields.
 }
 
@@ -27,6 +27,14 @@ The abort effect allows computations to signal immediate termination without pro
                     (abort)
                     (return (void)))]
           (return (abs x))))
+
+    (define (abort-handler eff k)
+      (match eff
+        [(abort-effect) (return 'aborted)]))
+
+    (run (conditional-abort -3) abort-handler)
+    (run (conditional-abort 3)
+         (lambda (eff k) (k (void))))
   ]
 }
 

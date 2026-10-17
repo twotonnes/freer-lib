@@ -8,26 +8,26 @@
 @(define std-eval (make-base-eval))
 @interaction-eval[#:eval std-eval (require racket freer-lib)]
 
-@title{Fail Effect}
+@title[#:tag "Failure Effect"]{Failure Effect}
 
-@defmodule[freer-lib/effects/fail-effect]
+@defmodule[freer-lib/effects/failure-effect]
 
-The fail effect allows computations to signal failure with an error message. This is useful for error handling and control flow in effectful computations.
+The failure effect allows computations to signal failure with an error message. This is useful for error handling and control flow in effectful computations.
 
-@defstruct[fail-effect ([msg string?]) #:transparent]{
+@defstruct[failure-effect ([msg string?])]{
   A descriptor that represents a failure with an associated error message.
 }
 
-@defproc[(fail [msg string?]) free?]{
+@defproc[(failure [msg string?]) free?]{
   Constructs an effect that signals failure with the given error message.
 }
 
-The fail effect is often used in conjunction with error handling in other effects. When an error occurs during command execution or HTTP requests, the @racket[fail] effect can be used to propagate the error through the computation.
+The failure effect is often used in conjunction with error handling in other effects. When an error occurs during command execution or HTTP requests, the @racket[failure] effect can be used to propagate the error through the computation.
 
 @examples[#:eval std-eval
   (define computation
     (do-m [x <- (id 10)]
         (if (< x 20)
-            (fail "Value is too small")
+            (failure "Value is too small")
             (return x))))
 ]

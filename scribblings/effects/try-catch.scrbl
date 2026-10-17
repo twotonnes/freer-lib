@@ -17,7 +17,7 @@ The try-catch pattern provides a mechanism for handling short-circuit failures i
 @defproc[(try [computation free?] [fallback free?]) free?]{
   Executes a computation and evaluates a fallback computation if the original returns @racket[#f].
 
-  When @racket[computation] returns @racket[#f], a @racket[failure-effect] is performed with the @racket[fallback] computation. If the computation returns any other value, that value is returned directly.
+  When @racket[computation] returns @racket[#f], an internal failure effect carrying the @racket[fallback] computation is performed. This effect is private to the @racket[freer-lib/try-catch] module and is distinct from the exported @racket[failure-effect]. If the computation returns any other value, that value is returned directly.
 
   This is typically used with @racket[catch] to handle the @racket[failure-effect]:
 
@@ -35,9 +35,9 @@ The try-catch pattern provides a mechanism for handling short-circuit failures i
 }
 
 @defproc[(catch [computation free?]) free?]{
-  Interprets a computation that may produce @racket[failure-effect]s, converting them into successful computations.
+  Interprets a computation that may fail through @racket[try]. At the first failure, the rest of the computation is discarded and the fallback computation is returned as the result; it is not run by @racket[catch] itself, so the result may still be a computation with effects.
 
-  The @racket[catch] procedure installs an interpreter that handles @racket[failure-effect]s by returning their fallback computation. Any other effects are re-performed in the interpretation context.
+  The @racket[catch] procedure walks the computation: a failure from @racket[try] yields its fallback computation, and any other effects are re-performed so an outer handler can interpret them.
 
   This allows computations using @racket[try] to properly handle failures:
 
