@@ -1,13 +1,14 @@
 :PROPERTIES:
 :DATE: 2026-10-18
-:STATUS: accepted
+:STATUS: final
 :END:
-#+TITLE: Performance benchmark of freer-lib: research plan
+#+TITLE: Performance benchmark of freer-lib
 
-*This document is a plan. No measurement has been made for it yet.* Every number that
-appears below is either quoted from another document of this repository (and says so) or
-is a hypothesis. Findings, scenario effects, and the recommendation are filled in only
-after the harness is built and the study has run, in a later revision.
+This document started as an accepted plan and now also holds the outcome of the study. The
+plan text (Method, the lists of workloads and micro-benchmarks, Resolved questions) is kept
+as written, because it states how the numbers were produced. Measured numbers are in
+Findings, with their evidence; statements marked "Inference" are not measured. No library
+code was changed, and no scenario was tried: the scenarios are still hypotheses.
 
 * Question
 How does monadic code written with freer-lib perform against ordinary Racket code that
@@ -16,23 +17,34 @@ performance, and by how much? The outcome is a guide of the form "doing X affect
 performance like so", plus a list of improvements to the library worth trying.
 
 * Summary
-Not available yet; nothing has been measured. The plan is:
-- Five synthetic workloads (W1 to W5), each representative of a kind of real-world
-  program, each with a plain-Racket counterpart and a size parameter n. They give the
-  headline result.
-- Nine micro-benchmarks (U1 to U9), each isolating one cost of the library.
-- Four metrics: median wall time per operation, allocated bytes per operation (required),
-  GC time share, and the scaling exponent from a log-log fit. The overhead ratio
-  (monadic over plain) is reported at each n.
-- A fixed, repeatable method run from one make target, kept out of =make test= and
-  =make build=.
-- A set of candidate improvements (hypotheses), tried only on scratch copies.
-- Seven earlier decisions are recorded as resolved (Q1 to Q7). One question remains open
-  (N2; N1 is resolved).
-- The state effect is implemented, so all five workloads can be built. The harness is
-  covered by a [[file:../detailed-design/features/performance-benchmark.org][detailed design]].
+The study ran once on one machine (Intel i7-8565U, Racket v9.3 CS, governor powersave).
+All 25 case files and the summary are in =data/performance-benchmark/=. Numbers below are
+overhead ratios (monadic time over plain time) at the largest size, n = 131072, unless
+stated.
+- Workloads: W1 request pipeline 2.7; W2 ledger 11.8 (box) and 11.6 (threaded); W3 parser
+  with backtracking 10.1; W4 tree traversal 5.3 (complete) and 4.9 (degenerate); W5 Monte
+  Carlo 20.5. In absolute terms a monadic step costs about 2 to 9 microseconds per
+  operation where plain code costs 0.1 to 1.6.
+- Micro-benchmarks: U1 pure bind 3.0; U2 one run 11.8; U3 one effect 20.6; U4 right-nested
+  21.2 and left-nested 86.6; U5 non-tail 37.2 and tail 21.1; U6 =sequence= 36.5 and
+  =map-m= 10.3; U7 nested handlers 9.7, 7.6, 5.2, 3.4 for k = 1, 2, 4, 8; U8 failure
+  effect 0.84 (no failure), 0.37 (failure at depth 1), 0.72 (depth 8); U9 repeated
+  resumption 11.7.
+- Scaling: time per operation is about constant (log-log slope 0.98 to 1.08 over the whole
+  series) in most cases, monadic and plain. Monadic left-nested binds (U4 left, slope 1.11
+  whole series, 1.26 upper half) and monadic =sequence= (U6, 1.12 and 1.19) grow faster,
+  and GC share rises with them (0.59 and 0.42 at the largest n). Monadic non-tail
+  recursion (U5) is mildly above 1 (1.09 and 1.13).
+- Failure effect (U8): the monadic =try= and =catch= is at or below plain
+  =with-handlers= and =raise= in all three variants.
+- Reliability: one machine, noisy-by-design conditions (powersave, load 0.5 to 1.8), byte
+  figures not trusted in absolute terms, two flagged points (W1 at n = 16384).
+- Recommendation: no change to the library is recommended from these data alone. If the
+  user wants to try one, S1 first (fewer allocations per bind and queue node), evaluated
+  on U4 left, U6 =sequence=, U5 non-tail, U3 and W5; then S5. S6 has no measured problem.
+  See Recommendation for what would decide it.
 
-* Method (plan; nothing run yet)
+* Method
 ** Reference platform
 The reference platform is the Racket installed on the machine the study runs on, which
 targets Chez Scheme (Racket CS). No version number is fixed in this plan. Every result
@@ -268,28 +280,228 @@ These are checked when the harness is built, and a failing check blocks the run.
 - The workloads are synthetic. They are chosen to resemble real programs, but they are
   not measurements of any particular application.
 
-* Scenarios (candidate improvements; all hypotheses, to evaluate later on scratch copies)
-Nothing here is measured. Each scenario is tried only after the baseline exists, only on
-a scratch copy of the library, and only if the baseline points at the cost it targets.
+* Findings
+** How the numbers were produced
+Measured. The study was run with =make benchmark= (compiled with =raco make=, run under
+plain =racket=) on the pilot size series 2^6 to 2^17 for every case, 15 repetitions per
+point (30 where a point was re-run), 3 warm-ups, a major collection before each timed run,
+an empty-run subtraction, and the equality check before timing, as in Method. Spread
+threshold 0.2 of the median, quartiles by R-7. Files, all in
+=research/data/performance-benchmark/=:
+- =summary.org=: per case and variant, median, min, max, IQR, bytes per operation, GC
+  share, flag and re-run mark, the overhead ratio at each n, and the scaling slopes with
+  their fit ranges.
+- =raw-<id>-<variant>.rktd=: the raw samples (times, bytes, GC milliseconds, operation
+  count, batch factor) for each version and n.
+- =environment.rktd=: the environment record.
+Times in =summary.org= are milliseconds per operation; this document converts them. The
+slopes are fitted to log time against log n over the whole series (64 to 131072) and over
+the upper half (4096 to 131072). A slope of 1 means constant time per operation.
 
-| Id | Direction | Cost to try | Expected gain (hypothesis) | Risk |
-|----+-----------+-------------+----------------------------+------|
-| S1 | Keep the queue representation; reduce per-bind allocation (fewer closures and queue nodes per bind) | low | lower constant factor in U3 to U6 and W1 to W5 | low; internal only |
-| S2 | Specialise binds of pure values (evaluate immediately, skip queue work) | low | U1 and chains with many pure steps | low; must keep observable order and results |
-| S3 | Macro-level fusion of =do-m= (combine adjacent binds at expansion time) | medium | U3, W1 to W5 | medium; changes expansion, harder to debug |
-| S4 | CPS or direct-style fast path inside =run= for common handlers | high | U3, U7, W1 to W5 | high; may affect the handler interface and repeated resumption |
-| S5 | Avoid closure creation in =perform= (share the resuming procedure) | low | U2, U3 | medium; the detailed design records that equality on waiting computations already changed once |
-| S6 | Store the rotated queue to make repeated resumption cheaper | medium | U9 | medium; the spec treats U9 as out of scope, so this needs a new spec |
+** Environment (from environment.rktd)
+- Racket v9.3 CS, VM chez-scheme. The record's racket-version field holds the whole
+  banner text ("Welcome to Racket v9.3 [cs]."), not only the version (a cosmetic bug of the
+  harness; see Open questions).
+- Intel Core i7-8565U at 1.80 GHz, 8 logical cores, 16 071 424 kB memory, Linux 7.2.5
+  (x86_64).
+- Frequency governor powersave; power source AC mains online.
+- Load average at the start 0.51, 1.82, 1.69; at the end 1.00, 1.11, 1.35. The machine
+  was not idle (the plan required an idle machine; the load is recorded, not controlled).
+  The raw files' load-end field repeats the start value in the one file inspected
+  (=raw-w1-default.rktd=), while =environment.rktd= has a different end value; not
+  investigated.
+
+** Caveats on reading the numbers
+- One machine, one Racket version, one run of the whole study. The results show relative
+  cost, not absolute cost, and are not a measurement of any application.
+- Governor powersave with load between 0.5 and 1.8 on a laptop CPU. Frequency changes
+  during a run would show up as drift inside a point. One is visible: in the 30 monadic
+  samples of W1 at n = 16384 (=raw-w1-default.rktd=) the time falls steadily from 83.1 to
+  69.1 ms per run. Inference: frequency or thermal drift, not established.
+- Byte figures are not trusted in absolute terms. The earlier one-line =racket -e= check
+  read about 17 MB for about 0.1 MB expected (Q2). Bytes per operation are reported below
+  as read, and are not used to rank the scenarios. Their only supported use is the
+  relative comparison within the study, for example that monadic bytes per operation are
+  flat in n for most cases.
+- GC share is computed from =current-gc-milliseconds=. Inference: at the small sizes the
+  runs are short and the share reads 0, which may only reflect the counter's coarse
+  resolution rather than the absence of collections.
+- Plain counterparts of the micro-benchmarks take 2 to 17 ns per operation, close to the
+  table's resolution of 1 ns and to the cost of the loop itself. Inference: the overhead
+  ratios of U1 to U6 are ratios against a very small denominator, so they are large
+  and sensitive to small changes in it. They show how much dearer the library is than a
+  bare loop, not than a realistic handler.
+- Two points are flagged: W1 at n = 16384, monadic and plain. Both were re-run and the
+  flag was kept, as designed. The monadic ratio at that point (3.02) sits above its
+  neighbours (2.5 to 2.9); do not read a trend into it. The summary table shows the
+  plain point's IQR as 0.5% of its median, below the threshold, and =raw-w1-default.rktd=
+  holds 15 plain samples at that point, not 30 (the monadic point holds 30). Why the plain
+  point is flagged and shows 15 samples was not established.
+- The summary lists no point with a non-positive median after empty-run subtraction.
+
+** Workloads (headline)
+Measured, n = 131072, per-operation time monadic and plain, and the ratio. The operation is
+one request (W1), transaction (W2), character (W3), node (W4) or draw (W5). Source:
+=summary.org=, sections w1 to w5.
+| Workload | Variant | Monadic | Plain | Ratio |
+|----------+---------+---------+-------+-------|
+| W1 request pipeline | default | 4.34 us | 1.58 us | 2.74 |
+| W2 ledger | box | 3.70 us | 0.31 us | 11.83 |
+| W2 ledger | threaded | 3.53 us | 0.30 us | 11.61 |
+| W3 parser | default | 8.93 us | 0.88 us | 10.11 |
+| W4 tree | complete | 4.69 us | 0.89 us | 5.26 |
+| W4 tree | degenerate | 4.72 us | 0.97 us | 4.89 |
+| W5 Monte Carlo | default | 1.95 us | 0.095 us | 20.54 |
+- Ratios are stable across n for W1 (2.4 to 3.0), W4 (4.9 to 5.3) and W5 (20 to 21 from
+  n = 1024; 31.5 at n = 64). W2 falls slowly from about 14.8 (n = 1024) to 11.8. W3 starts low
+  at the smallest sizes (4.7 at n = 64, 8.3 at 128) and settles near 10 from n = 1024.
+  Inference: W3's small-n values depend on the generated text, since the per-character
+  monadic time is not monotone (3.6, 7.6, 5.4, 7.6 us at n = 64, 128, 256, 512).
+- The two W2 plain styles (box and threaded) differ by 3% at n = 131072; the ratio does
+  not depend on which plain style is the reference.
+- W4: the degenerate (right-leaning) tree costs the same as the complete tree in both
+  versions (4.72 and 4.69 us monadic). In this study, depth did not matter for W4.
+- Bytes per operation as read (caveat above): monadic W1 8.5 KB against plain 1.7 KB; W2
+  8.4 KB against 0.46 KB; W3 38 KB against 3.2 KB; W4 9.7 KB against 0.56 to 0.62 KB;
+  W5 4.7 KB against 0.04 B.
+- The state-effect workloads W2 and W5 have the highest ratios (11.6 to 20.5) while W1,
+  with env, log and failure and more plain work per step, has the lowest.
+  Inference: the ratio is high where the plain step is cheap, as the denominators of
+  the micro-benchmarks suggest; W2 and W5 plain steps are 0.1 to 0.3 us.
+
+** Micro-benchmarks
+Measured, n = 131072 (U7: the size series is the batch count, k is the variant), per
+operation. Source: =summary.org=, sections u1 to u9.
+| Case | Variant | Monadic | Plain | Ratio | Monadic slope (whole, upper half) |
+|------+---------+---------+-------+-------+-----------------------------------|
+| U1 bind of =return= | default | 8 ns | 3 ns | 3.01 | 1.00, 1.01 |
+| U2 one =perform= and =run= | default | 25 ns | 2 ns | 11.80 | 1.00, 1.00 |
+| U3 =perform= sequence | default | 44 ns | 2 ns | 20.60 | 1.00, 0.99 |
+| U4 nested binds | right | 44 ns | 2 ns | 21.19 | 1.00, 0.99 |
+| U4 nested binds | left | 182 ns | 2 ns | 86.61 | 1.11, 1.26 |
+| U5 recursion | non-tail | 194 ns | 5 ns | 37.25 | 1.09, 1.13 |
+| U5 recursion | tail | 45 ns | 2 ns | 21.06 | 1.00, 0.99 |
+| U6 list combinators | =sequence= | 273 ns | 7 ns | 36.52 | 1.12, 1.19 |
+| U6 list combinators | =map-m= | 99 ns | 10 ns | 10.29 | 1.05, 0.99 |
+| U7 nested handlers | k = 1 | 46 ns | 5 ns | 9.71 | 0.99, 0.99 |
+| U7 nested handlers | k = 2 | 48 ns | 6 ns | 7.55 | 1.00, 0.99 |
+| U7 nested handlers | k = 4 | 50 ns | 10 ns | 5.18 | 1.00, 0.99 |
+| U7 nested handlers | k = 8 | 58 ns | 17 ns | 3.36 | 1.00, 0.99 |
+| U8 failure effect | no failure | 131 ns | 155 ns | 0.84 | 0.99, 1.00 |
+| U8 failure effect | failure at depth 1 | 175 ns | 474 ns | 0.37 | 0.99, 0.98 |
+| U8 failure effect | failure at depth 8 | 352 ns | 486 ns | 0.72 | 0.99, 0.99 |
+| U9 repeated resumption | default | 6.28 us | 0.54 us | 11.72 | 1.00, 1.01 |
+- Cost structure (inference from the medians): a bind of a finished value costs about 8 ns
+  (U1), one effect through =run= about 44 ns (U3, U4 right, U5 tail agree within 1 ns),
+  and one =run= call about 25 ns (U2). The effect is the dearer step, not the bind.
+  U4 right and U5 tail match U3 to the nanosecond, so right-nesting and tail
+  recursion add nothing over the plain sequence of effects.
+- Queue-based bind: the right-nested chain is flat (slope 1.00, 44 ns at every n). The
+  left-nested chain is the shape that was quadratic before the queue representation; it is
+  not quadratic now (slope 1.11 to 1.26, not 2), but it is the one shape that still
+  grows: 71 ns per bind at n = 64 to 85 ns at 16384, then 130 ns at 32768, 139 at
+  65536 and 182 at 131072. The GC share is 0 up to 16384, 0.24 at 32768, 0.44 at 65536
+  and 0.59 at 131072.
+- U6 =sequence= grows the same way: 107 ns per element at n = 64, 177 ns at 16384 (GC
+  share 0), 273 ns at 131072 (GC share 0.42). =map-m= is flat in the upper half (slope
+  0.99) but its GC share is 0.31 at 32768 and 0.16 to 0.23 above.
+  Inference: the growth begins before any measured GC share (U4 left and U6 =sequence=
+  already rise from n = 4096 with share 0), so GC does not explain all of it. Cache
+  effects from the larger live structure are a candidate; not tested.
+- U5 non-tail: monadic time rises from 106 ns (n = 64) to 194 ns, with GC share 0.36 to
+  0.49 from n = 16384. The ratio peaks at 78 (n = 16384), and falls to 37 at the
+  largest n only because the plain time rises from 2 ns to 5 ns there.
+  The plain slope (1.08 whole series, 1.25 upper half) at 2 to 5 ns per operation is
+  not a result about plain Racket; it is the harness measuring at its limit. The same holds
+  for U6 =map-m, plain slope 1.12 and 1.30, where the ratio falls from 37 to 10 for the
+  same reason (plain time from 3 ns to 10 ns above n = 32768; monadic time falls from 110
+  to 99 ns). Read these four slopes and the large-n ratios of these two cases with that
+  in mind. Inference: the plain variants allocate more per operation at the large sizes
+  (U5 non-tail plain 0.01 to 9.6 B, map-m plain 16 to 38 B), which points to stack or
+  list growth, under the byte caveat.
+- Handler stacking (U7): from k = 1 to k = 8 the monadic time rises by 12 ns (46 to 58)
+  and the plain time rises by 12 ns (5 to 17). Inference: the cost of an added handler
+  level is about the same in both and is not particular to the library, so the ratio
+  falls with k only because the plain cost grows.
+- Failure effect (U8): monadic is faster than plain in all three variants (ratios 0.84,
+  0.37, 0.72), at every n from 64 to 131072 (0.79 to 0.87 without failure,
+  0.37 to 0.40 at depth 1, 0.70 to 0.76 at depth 8). The plain version uses =with-handlers= and =raise=;
+  inference: raising an exception and installing a handler per try is dearer than
+  the library's failure effect at this cost level. W1, with a failure in about one request in
+  eight, has the lowest ratio of the workloads (2.7).
+- U9: the cost per resume is flat in n (slope 1.00, 1.01); the ratio is 10.7 to 11.7. No
+  growth was measured, within the size range used. U9 is a fixed-depth case. The queue-based-bind
+  design's recorded figures (53 ms against 18 ms for 100 resumes at depth 20 000) were not
+  reproduced or compared here.
+- Bytes per operation as read (caveat above): U1 32 B per bind; U2 112 B per run; U3 and
+  U4 right and U5 tail 272 B per effect; U4 left 432 B; U5 non-tail 640 B; U6 =sequence= 337
+  B and =map-m= 304 B; U7 272 to 274 B for every k; U8 800 B (no failure), 1152 B and 2500
+  B (failures); U9 20.4 KB per resume. Monadic bytes per operation are flat in n in every
+  case. In U4 left the time grows 2.6 times with bytes per operation flat (431 to 432 B).
+  Inference, under the byte caveat: the extra time of U4 left is not extra allocation per bind.
+
+** Scaling summary
+Measured. Slopes of time per run against n, whole series. Monadic: 0.99 to 1.08 in all
+cases except U4 left (1.11), U6 =sequence= (1.12) and U5 non-tail (1.09). W3 monadic is
+1.08 whole series and 1.03 upper half (its small-n values are irregular, see above).
+Plain: 0.98 to 1.05, except U5 non-tail (1.08), U6 =map-m= (1.12) which are discussed
+above. All upper-half fits (4096 to 131072) are within 0.97 to 1.08 apart from U4 left
+(1.26), U6 =sequence= (1.19), U5 non-tail (1.13, plain 1.25), and U6 =map-m= plain (1.30).
+For the workloads W1 to W5 the whole-series slope is 0.99 to 1.08 for monadic and 0.99 to
+1.05 for plain. Inference: nothing in the workloads shows superlinear growth up to n = 131072; the
+superlinear cases are three micro-benchmarks that build deep or long structures.
+
+* Scenarios (candidate improvements; all hypotheses, to evaluate later on scratch copies)
+The scenarios below are the hypotheses of the plan, retained unchanged. None was tried,
+so no gain is claimed. Each is tried only on a scratch copy of the library, and only if the
+baseline points at the cost it targets. The last column says what the baseline suggests;
+it is an inference from the measured cases above, not a measured effect.
+
+| Id | Direction | Cost to try | Expected gain (hypothesis) | Risk | What the baseline suggests (inference) |
+|----+-----------+-------------+----------------------------+------+----------------------------------------|
+| S1 | Keep the queue representation; reduce per-bind allocation (fewer closures and queue nodes per bind) | low | lower constant factor in U3 to U6 and W1 to W5 | low; internal only | U4 left, U6 =sequence= and U5 non-tail are the only cases whose per-operation time grows with n (slopes 1.09 to 1.26, GC share up to 0.59). If the growth comes from live queue structure, fewer nodes would act on it. The same cases have the highest ratios (37 to 87). U3 and W5 (20.6, 20.5) point at the constant factor. Whether allocation causes the growth is not shown: bytes per operation are flat while time grows. |
+| S2 | Specialise binds of pure values (evaluate immediately, skip queue work) | low | U1 and chains with many pure steps | low; must keep observable order and results | U1: 8 ns per bind against 3 ns plain, ratio 3.0; the absolute gap is about 5 ns per bind. A bind of a finished value is the cheap step (the effect is about 44 ns). Little room, unless a workload has many pure binds; W1, which has the most plain work, has ratio 2.7. |
+| S3 | Macro-level fusion of =do-m= (combine adjacent binds at expansion time) | medium | U3, W1 to W5 | medium; changes expansion, harder to debug | No case separates the cost of expansion from the cost of running. U3 (44 ns per effect) and W2, W4, W5 (5 to 21) show the total, not the share a fusion could remove. Not indicated by any single measurement. |
+| S4 | CPS or direct-style fast path inside =run= for common handlers | high | U3, U7, W1 to W5 | high; may affect the handler interface and repeated resumption | U7 shows each added handler level costs about 12 ns from k = 1 to 8 in both versions, so stacking is not a library-specific cost. U2 (25 ns per run) is a fixed cost, small next to workload steps of 2 to 9 us. Nothing isolates the dispatch cost. |
+| S5 | Avoid closure creation in =perform= (share the resuming procedure) | low | U2, U3 | medium; the detailed design records that equality on waiting computations already changed once | The effect (about 44 ns in U3, U4 right, U5 tail) costs about five times a bind of a finished value (8 ns in U1), so the =perform= path holds most of the per-step time. Under the byte caveat, the monadic per-effect allocation is 272 B against 32 B per bind. Which part of the 44 ns is closure creation is not measured. |
+| S6 | Store the rotated queue to make repeated resumption cheaper | medium | U9 | medium; the spec treats U9 as out of scope, so this needs a new spec | U9 is flat in n (slope 1.00, ratio 10.7 to 11.7). No cost growth with the number of resumes was measured, at the one fixed depth used. The benchmark gives no reason to act. |
 
 Any scenario that changes observable behaviour, the handler interface, or the shape of
 the waiting-computation structure needs a spec first and may be a breaking change under
 decision 0002.
 
 * Recommendation
-None yet; it depends on the measurements. After the study, this section will rank the
-scenarios by measured gain per cost, and state under which results a different
-choice is better (for example, if overhead ratios are already small on W1 to W5, no
-scenario is worth its risk).
+No change to the library is recommended from this study. The data say where the cost is
+and which scenario touches it; they do not show a gain. The ranking by evidence, strongest
+first:
+1. *S1* (reduce allocation per bind and queue node). It is the only scenario that
+   addresses the one finding that is not constant-factor: the growth with n of U4 left,
+   U6 =sequence= and U5 non-tail, which are also the cases with the largest ratios. It is
+   low cost and internal. Try it first.
+2. *S5* (avoid closure creation in =perform=). The effect is the dear step (about 44 ns
+   against 8 ns for a bind), and U3 and W5 have ratios near 20. Low cost; the risk is the
+   equality on waiting computations.
+3. *S2* (pure binds). Measured room is about 5 ns per bind. Only worth it if a real
+   program has many pure binds.
+4. *S3* (=do-m= fusion). No measurement supports it specifically; medium cost.
+5. *S4* (fast path in =run=). High cost and risk, and U7 shows stacking is not a
+   library-specific cost.
+6. *S6* (repeated resumption). No problem measured; needs a new spec.
+
+What would decide it. Before trying S1, separate the causes of the growth in U4 left and
+U6 =sequence=: time with the GC share removed, and the same cases with a larger heap,
+on a scratch copy and the same machine. If the growth is mutator time and not GC, S1 may
+not help it. Then run S1 on U4 left, U6 =sequence=, U5 non-tail, U3 and W5. S1 is
+worth keeping if the U4 left and U6 =sequence= slopes fall toward 1 and the U3 and W5
+ratios drop clearly outside the spread seen in the baseline (the W1 ratio ranged from 2.4
+to 3.0 across n on one machine). If the slopes stay and the ratios do not move, S5 is next.
+
+A different choice is better in two cases. If the user judges ratios of 5 to 20 in the state
+and random workloads acceptable, because the absolute cost is 2 to 9 us per operation, no
+scenario is worth its risk; this is the user's call, since the ratios are not small. If the
+user's programs build long left-nested binds or use =sequence= on long lists, S1 moves
+from first choice to a requirement. For failure handling, U8 and W1 show no cost problem
+compared with exceptions, on this machine.
 
 * Open questions
 ** Resolved (decisions of the user)
@@ -318,9 +530,29 @@ scenario is worth its risk).
    as stated above.
 
 ** Still open
-1. *N2 Title and contents of the research index*: the title of =research/index.org= and
-   its Contents entry for this plan may need changes (see the report accompanying this
-   revision). The user decides whether to change them.
+1. *N2 Title and contents of the research index*: the title of =research/index.org= (it
+   reads "Puzzleten research") and its Contents entry for this document (it still says
+   "plan (accepted, nothing measured yet)") are out of date. The user decides whether
+   and how to change them; this document does not change the index.
+2. *Environment record, racket-version field*: it holds the whole banner ("Welcome to
+   Racket v9.3 [cs]."), not the version number. Known cosmetic bug of the harness; the
+   user decides whether to fix it (the data files keep it as recorded) or leave it.
+3. *Monadic overhead of the state-effect cases*: W2 (11.6 to 11.8) and W5 (20.5) have
+   high ratios, and W4 is 4.9 to 5.3. The user decides whether this overhead is
+   acceptable or whether a state-specific improvement is worth a spec (none of S1 to
+   S6 targets the state effect or its handler; the harness handler is the harness's
+   own, not a library handler).
+4. *Not established*:
+   - Why the plain W1 point at n = 16384 is flagged with a small IQR and only 15
+     samples in its raw file.
+   - Whether the growth of U4 left, U6 =sequence= and U5 non-tail is GC, cache, or
+     both.
+   - Absolute allocation per operation (the byte caveat).
+   - Whether the drift inside a point (W1 monadic, n = 16384) comes from frequency
+     scaling. A repeat run with the performance governor and an idle machine would
+     settle it; not done.
+   - The raw files' load-end field repeats the start value, while the environment
+     record has a different end value.
 
 ** Resolved after approval
 1. *N1 Broken link in the index* (resolved by the user): decision "removed index entry".

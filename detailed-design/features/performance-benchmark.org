@@ -1,12 +1,12 @@
 :PROPERTIES:
-:STATUS: accepted
+:STATUS: implemented
 :DATE: 2026-10-18
 :SPEC: ../../research/performance-benchmark.org
 :END:
 #+TITLE: Performance benchmark harness: detailed design
 
 * Summary
-How the harness of the [[file:../../research/performance-benchmark.org][performance benchmark research plan]] is built. There is no feature spec: the accepted research plan governs scope, workloads, metrics and constraints, and this document only says which modules and procedures realise them. The harness lives in =benchmark/=, measures the library through its public interface, and changes no library code.
+How the harness of the [[file:../../research/performance-benchmark.org][performance benchmark research plan]] is built; it is implemented, ran the study once (results in [[file:../../research/performance-benchmark.org][the research document]]), and this document describes the code as it is. There is no feature spec: the accepted research plan governs scope, workloads, metrics and constraints, and this document only says which modules and procedures realise them. The harness lives in =benchmark/=, measures the library through its public interface, and changes no library code.
 
 * Modules and procedures
 Plan items are named by their section or constraint number. P = pure, I = impure (clock, GC, file system, process environment).
@@ -178,10 +178,21 @@ Choices the plan leaves open; all of these are pure unless stated.
 | 7 No library change              | harness requires only the public modules (=main.rkt=, =try-catch.rkt=, =effects/*.rkt=); scenarios S1 to S6 are not part of this design and are tried on scratch copies |
 
 ** Effects and the pure/impure boundary
-The harness performs effects: it reads the clock and memory counters, forces collections, runs =racket --version=, reads system files and writes files. This is outside the library and not in conflict with [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]]: the library's pure code still only describes effects, and the harness is the impure shell around it, just as the library's own handlers are. Inside the harness, pure code is kept separate: =summarise=, =spread-flag?=, =rerun-point?=, =split-positive=, =log-log-slope=, =render-summary=, input generators and the computation builders (=wN-monadic=, =uN-case=) return values and do no I/O. Impure code is limited to =measure.rkt=, =environment.rkt=, =report.rkt=, =handlers.rkt=, the plain counterparts that call the log sink or a box, and =run.rkt=. The library code it measures is unchanged, and no library effect handler is added. Handlers defined here (including the state handler) are used by the harness only and are not exported from =main.rkt= or =effects/main.rkt=. =detailed-design/architecture.org= is not updated for =benchmark/=: it is not part of the library, and a note there is added when the harness is built, if the user wants one.
+The harness performs effects: it reads the clock and memory counters, forces collections, runs =racket --version=, reads system files and writes files. This is outside the library and not in conflict with [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]]: the library's pure code still only describes effects, and the harness is the impure shell around it, just as the library's own handlers are. Inside the harness, pure code is kept separate: =summarise=, =spread-flag?=, =rerun-point?=, =split-positive=, =log-log-slope=, =render-summary=, input generators and the computation builders (=wN-monadic=, =uN-case=) return values and do no I/O. Impure code is limited to =measure.rkt=, =environment.rkt=, =report.rkt=, =handlers.rkt=, the plain counterparts that call the log sink or a box, and =run.rkt=. The library code it measures is unchanged, and no library effect handler is added. Handlers defined here (including the state handler) are used by the harness only and are not exported from =main.rkt= or =effects/main.rkt=. =detailed-design/architecture.org= is not updated for =benchmark/=: it is not part of the library, and a note there is added if the user wants one (open).
+
+* Deviations from the accepted design
+Found when the code was compared with this document after the study ran. The text above is aligned with the code; this list records where the code differs from what was accepted.
+1. Requires of =benchmark/handlers.rkt=. The module requires the six effect modules (=env=, =failure=, =id=, =log=, =rnd=, =state=) at module level, as designed. Its =(module+ test)= block also requires =../freer-monad.rkt= and =../try-catch.rkt= directly, which the design (constraint 7 row, "requires only the public modules (=main.rkt=, =try-catch.rkt=, =effects/*.rkt=)") did not list. Both are library modules and nothing outside =benchmark/= changed; the only difference is that =freer-monad.rkt= is required directly instead of through =main.rkt=. No other benchmark module requires =freer-monad.rkt=. =benchmark/workloads.rkt= requires =../main.rkt=.
+2. The log handler passes the whole log description to the sink, not only the message text; the sink is called with the description (=null-log-sink= and the counting sinks of the tests accept any value).
+3. The state store is the hash made by =make-state-store=; =state-handler= and =bench-handler= use it as a hash and raise =exn:fail= on a missing key.
+4. =time-run= takes the ops-per-call argument but does not use it; it doubles the batch from 1 until a batch takes at least =pilot-target-ms= or reaches a cap, =max-batch=, both constants of =benchmark/measure.rkt=.
+5. A mismatch in =case-check= raises =exn:bench-mismatch=, a subtype of =exn:fail= that carries the id, variant and n. =run-study= catches only that subtype to void the case.
+6. =write-raw= stores the environment recorded at the start of the study, so the =load-end= field in the raw files equals =load-start=. =environment.rktd= holds the environment with =load-end= read at the end of the study (=finish-environment= in =benchmark/run.rkt=). The design said both would hold the end load.
+7. =record-environment= stores the whole first line of =racket --version= in =racket-version=, for example "Welcome to Racket v9.3 [cs].", not the version number alone (cosmetic; the data files keep it as recorded).
+8. Pilot sizes are a constant, =pilot-sizes=, exported from =benchmark/case.rkt= and used by every case. The case result and the statistics records are structures exported from =benchmark/report.rkt= (=case-result=), =benchmark/stats.rkt= (=summary=, =fit=) and =benchmark/measure.rkt= (=sample=).
 
 * Implementation checks
-The plan has no acceptance criteria in the spec sense; these checks derive from its constraints and metrics. Tests of pure harness procedures live next to them in =(module+ test)=; the test plan is written after this design is accepted.
+The plan has no acceptance criteria in the spec sense; these checks derive from its constraints and metrics. Tests of pure harness procedures live next to them in =(module+ test)=; the [[file:../../test-plan/features/performance-benchmark.org][test plan]] lists the cases (213 rackunit cases, which match the =test-case= forms in =benchmark/=).
 - =summarise=, =spread-flag?=, =log-log-slope=: known inputs (for example a series with exact slope 1 and exact slope 2, and a sample set with a known median and IQR).
 - =case-check=: a deliberately unequal pair raises and names the case; an equal pair passes. Every workload and micro-benchmark passes at the smallest size as a check that the pair computes the same result.
 - Baseline duration: the duration of =make test= is measured once on the branch before the harness is added, and recorded as a number of seconds in the Open questions of the test plan (not in this design). Constraint 5 is checked against it.
@@ -196,8 +207,9 @@ The plan has no acceptance criteria in the spec sense; these checks derive from 
 - Per workload: the plan's per-workload "Result compared" is the =equal?= in the case, tested through =case-check= above.
 
 * Open questions
-- Whether the spread threshold (20% of the median) is acceptable; it is a proposal, to be tuned after the pilot and recorded with the results.
-- Whether =detailed-design/architecture.org= should list =benchmark/= (see the boundary section).
+- Whether =detailed-design/architecture.org= should list =benchmark/= (see the boundary section). Still open: the user has not decided, and that file is not changed with this document.
+- The spread threshold (20% of the median) was used as proposed in the study and is recorded in =summary.org=; the user may still want it tuned (two points of W1 were flagged).
+- Why the plain W1 point at n = 16384 is flagged although its IQR in the summary is below the threshold, and holds 15 samples in =raw-w1-default.rktd= where a re-run would give 30. Not established; see the research document.
 
 * Related
 - Governing document: [[file:../../research/performance-benchmark.org][performance benchmark research plan]] (accepted; there is no feature spec).

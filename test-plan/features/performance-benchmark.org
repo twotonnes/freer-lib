@@ -1,5 +1,5 @@
 :PROPERTIES:
-:STATUS: accepted
+:STATUS: implemented
 :DATE: 2026-10-18
 :SPEC: ../../research/performance-benchmark.org
 :DETAILED_DESIGN: ../../detailed-design/features/performance-benchmark.org
