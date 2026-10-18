@@ -1,0 +1,67 @@
+:PROPERTIES:
+:STATUS: implemented
+:DATE: 2026-10-18
+:SPEC: ../../design/features/state-effect.org
+:DETAILED_DESIGN: ../../detailed-design/features/state-effect.org
+:END:
+#+TITLE: State effect: test plan
+
+Test plan, as implemented, for [[file:../../detailed-design/features/state-effect.org][detailed-design/features/state-effect.org]]; 18 cases (numbers are the approved ones; 14 is intentionally absent).
+
+Fixture, defined once in the (module+ test) block of effects/state-effect.rkt:
+- (state-handler! store) is the handler from the detailed design.
+- (run-state m store) = (run m (state-handler! store)).
+- (store->alist store) = (sort (hash->list store) symbol<? #:key car).
+- Keys are symbols unless stated.
+
+* Cases
+** Building (no run)
+1. read-state: should build a description of a read without touching the store when built. Given store (make-state-store '((a . 1))). When (define m (read-state 'a)), not run. Then (free? m) is true and the store still holds ((a . 1)); the handler was never called.
+2. write-state: should build a description of a write without touching the store when built. Given same store. When (write-state 'a 9), not run. Then (free? m) true; store still ((a . 1)).
+3. update-state: should not call the function or touch the store when built. Given same store and f that sets a flag. When (update-state 'a f), not run. Then (free? m) true; flag unset; store ((a . 1)).
+
+** Running
+4. read-state: should return the starting value when the store held the key at the start. Given store seeded ((a . 1)). When (run-state (read-state 'a) store). Then result 1; store unchanged.
+5. write-state: should make a later read return the written value when written then read. Given store seeded ((a . 1)). When run write a 2 then read a. Then result 2.
+6. write-state: should make a read return the last value when the key is written twice. Given store seeded ((a . 1)). When run write a 2, then write a 3, then read a. Then result 3.
+7. write-state: should leave the caller's store holding the write when the run ends. Given empty store. When run (write-state 'a 5). Then (store->alist store) is ((a . 5)).
+
+** update-state
+8. update-state: should give the same result and store as read then write when applied. Given two stores seeded ((a . 1) (b . 10)); f is add1. When run (update-state 'a add1) on store 1; run (>>= (read-state 'a) (λ (v) (write-state 'a (add1 v)))) on store 2. Then the two results are equal?; both stores' alists equal ((a . 2) (b . 10)).
+9. update-state: should leave other keys unchanged when one key is updated. Given store ((a . 1) (b . 10)). When run (update-state 'a add1). Then b maps to 10.
+10. update-state: should raise when the key is missing and the handler raises on a missing key. Given empty store; f increments a counter. When run (update-state 'a f). Then exn:fail raised from hash-ref; f not applied; store stays empty.
+
+** make-state-store
+11. make-state-store: should hold exactly the seed pairs when given a list of pairs. Given seed ((a . 1) (b . 2)). When (make-state-store seed). Then hash? and mutable, hash-eq?; contents ((a . 1) (b . 2)).
+12. make-state-store: should return an empty store when given no seed. When (make-state-store) and (make-state-store '()). Then both mutable with hash-count 0.
+13. make-state-store: should raise a plain exn:fail naming the key when a key is repeated. Given seed ((dup-key . 1) (b . 2) (dup-key . 3)). When called inside with-handlers. Then exn:fail? true, exn:fail:contract? false; message contains "dup-key"; no store returned.
+
+** Runs and stores
+15. run-state: should not share writes when the same computation runs on two stores. Given s1 and s2 each seeded ((a . 0)); m = write a 7. When run m on s1 only. Then s1 has a=7; s2 still a=0.
+16. run-state: should share writes when the same store is used for two runs. Given store seeded ((a . 1)). When run (update-state 'a add1) twice on the store, then (read-state 'a) on it. Then read result 3.
+
+** Key identity (spec requirement 7)
+17. make-state-store: should treat equal but non-identical string keys as different keys when compared by eq?. Given k1 = (string-copy "k"), k2 = (string-copy "k"), equal? and not eq?; store from (list (cons k1 1)). When run (read-state k1), and run (read-state k2) inside with-handlers. Then k1 reads 1; k2 raises exn:fail (missing key).
+18. make-state-store: should use one key when the same object is used twice. Given k = (string-copy "k"); store from (list (cons k 1)). When run write k 2 then read k; check hash-count. Then result 2; count 1.
+19. make-state-store: should not report a duplicate when keys are equal but not identical. Given seed (list (cons (string-copy "k") 1) (cons (string-copy "k") 2)). When (make-state-store seed). Then no exception; hash-count 2.
+
+* Coverage
+| Spec item                                  | Cases / check              |
+|--------------------------------------------+----------------------------|
+| Requirement 1                              | 1, 2, 3                    |
+| Requirement 2                              | 4, 5, 6                    |
+| Requirement 3                              | 8, 9 (10 for missing key)  |
+| Requirement 4                              | 7, 15, 16                  |
+| Requirement 5                              | by inspection (no test; spec decision 8) |
+| Requirement 6                              | 11, 12, 13                 |
+| Requirement 7                              | 17, 18, 19                 |
+| Acceptance: other effects' tests pass unchanged | make test             |
+| Acceptance: read sees start-of-run value   | 4                          |
+| Acceptance: write twice then read          | 6                          |
+
+* Open questions
+None.
+
+* Related
+- [[file:../../design/features/state-effect.org][State effect spec]]
+- [[file:../../detailed-design/features/state-effect.org][State effect detailed design]]

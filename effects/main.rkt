@@ -10,6 +10,7 @@
     (all-from-out "file-system-effect.rkt")
     (all-from-out "failure-effect.rkt")
     (all-from-out "rnd-effect.rkt")
+    (all-from-out "state-effect.rkt")
   )
 
 (require
@@ -21,4 +22,5 @@
     "env-effect.rkt"
     "file-system-effect.rkt"
     "failure-effect.rkt"
-    "rnd-effect.rkt")
+    "rnd-effect.rkt"
+    "state-effect.rkt")

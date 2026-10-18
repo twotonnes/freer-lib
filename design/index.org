@@ -12,7 +12,9 @@ documentation and the detailed design state:
    [[file:../detailed-design/features/][detailed-design/features/]] (see its
    [[file:../detailed-design/index.org][index]]). It is accepted too before the feature
    is built.
-4. The spec's requirements and acceptance criteria are the basis for the test plan. Work
+4. The spec's requirements and acceptance criteria are the basis for the
+   [[file:../test-plan/index.org][test plan]], written in [[file:../test-plan/features/][test-plan/features/]] once the spec and
+   detailed design are accepted and before the code. Work
    outside the spec's scope is not done; if it turns out to be needed, the spec is updated
    (and accepted again) first.
 5. When the feature is built and its tests pass, the spec and its detailed design are
@@ -27,6 +29,7 @@ Architectural choices that affect more than one feature are recorded as decision
 - [[file:features/][Features]]: functional specs with scope, requirements, and acceptance criteria.
 - [[file:templates/][Templates]]: templates for new decisions and feature specs.
 - [[file:../detailed-design/index.org][Detailed design]]: how the architecture and the specs are realised in code.
+- [[file:../test-plan/index.org][Test plan]]: the test cases per feature, derived from the specs.
 
 * Conventions
 ** Status

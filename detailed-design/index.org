@@ -21,6 +21,7 @@ A feature's detailed design is written after its spec is accepted and before it 
   decisions show up in code. Keep it in sync with the code.
 - [[file:features/][Features]]: one detailed design per feature spec.
 - [[file:templates/][Templates]]: the template for a new detailed design.
+- [[file:../test-plan/index.org][Test plan]]: the test cases per feature, written after the detailed design is accepted.
 
 * Conventions
 ** Status

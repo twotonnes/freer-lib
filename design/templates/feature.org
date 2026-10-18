@@ -34,3 +34,4 @@ for the test plan.
 * Related
 - Decisions and features this depends on or affects.
 - The detailed design: [[file:../../detailed-design/features/short-title.org][Detailed design]].
+- The test plan: [[file:../../test-plan/features/short-title.org][Test plan]] (template: [[file:../../test-plan/templates/feature.org][test plan template]]).

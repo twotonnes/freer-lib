@@ -4,13 +4,14 @@
 Freer-lib is a library for writing programs as computations that describe effects, which a caller-supplied handler interprets.
 
 * Principles
-- The library is pure; it performs no effects of its own.
+- The library is pure; it performs no effects of its own. Programs only describe effects; handlers are the only code that performs them ([[file:decisions/0003-pure-and-effectful-code.org][decision 0003]]).
+- Failures mean incorrect program state; exceptions mean misuse of the API or incorrect syntax.
 - Handlers decide what each effect means, and may resume a computation any number of times.
 
 * Components
 - Core: computations that are finished or waiting for an effect. A waiting computation has three parts: the effect description, a way to resume it, and a queue of pending continuations. The core also provides bind (exported as >>=), sequencing notation, and running under a handler.
 - Failure catching, built on the core.
-- One module per standard effect.
+- One module per standard effect. The state effect (read, write and update a value by key on a caller-owned store) is one of them; it has no library handler, and the user's handler answers its descriptions.
 
 * Data flow
 Binding a waiting computation adds a function to its queue at constant cost. Resuming takes functions from the queue until the next effect, so cost does not grow with nesting. See [[file:features/queue-based-bind.org][queue-based bind]].

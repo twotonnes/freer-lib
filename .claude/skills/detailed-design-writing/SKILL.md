@@ -41,3 +41,6 @@ Use this skill when writing or reviewing detailed designs in `detailed-design/` 
 - [ ] Nothing contradicts the spec or the decisions.
 - [ ] `detailed-design/architecture.org` is updated if modules, data flow, or effects change.
 - [ ] Open questions are listed or there are none.
+
+## Reference example
+[[examples/state-effect-detailed-design.org]] (copy of `detailed-design/features/state-effect.org`) is the reference for style, detail, and compactness: each requirement traced to a module and procedure, the reasons for the code's shape instead of restated types, and one implementation check per requirement.

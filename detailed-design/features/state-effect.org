@@ -1,0 +1,96 @@
+:PROPERTIES:
+:STATUS: implemented
+:DATE: 2026-10-18
+:SPEC: ../../design/features/state-effect.org
+:END:
+#+TITLE: State effect: detailed design
+
+* Summary
+The module =effects/state-effect.rkt= defines two effect structures, three pure operations and one store constructor, as the [[file:../../design/features/state-effect.org][spec]] requires. It is written like =effects/env-effect.rkt=. It ships no handler (spec decision 2); the store is a mutable =hasheq= (keys compared with =eq?=), created by the caller or by a small seeding procedure, and the test file defines a small handler.
+
+* Modules and procedures
+P = pure.
+
+| Requirement | Module                            | Procedure (class)                                                    |
+|-------------+-----------------------------------+----------------------------------------------------------------------|
+|           1 | =effects/state-effect.rkt=        | =read-state=, =write-state=, =update-state= (P: only =perform= and bind) |
+|           2 | test file                         | test handler (=hash-ref=, =hash-set!= in program order)              |
+|           3 | =effects/state-effect.rkt=        | =update-state= (P: =read-state= then =write-state=)                  |
+|           4 | test file                         | test handler (store is an argument; no module-level storage)         |
+|           5 | =effects/main.rkt=, =scribblings= | re-export (documentation edit is not part of this design)            |
+|           6 | =effects/state-effect.rkt=        | =make-state-store= (creates a mutable hasheq; raises plain =exn:fail= on duplicate key) |
+|           7 | =effects/state-effect.rkt=        | =make-state-store= and the test handler (=hasheq=, =eq?= keys)       |
+
+* Design
+** Effect structures
+Same style as =read-env-effect= (rebellion records):
+#+begin_src racket
+;; (define-record-type read-state-effect (key))
+;; (define-record-type write-state-effect (key value))
+#+end_src
+
+** Operations (all P)
+#+begin_src racket
+;; Type: (-> Any Free)
+(define (read-state key) (perform (read-state-effect #:key key)))
+
+;; Type: (-> Any Any Free)
+(define (write-state key value) (perform (write-state-effect #:key key #:value value)))
+
+;; Type: (-> Any (-> Any Any) Free)
+(define (update-state key f)
+  (>>= (read-state key) (lambda (v) (write-state key (f v)))))
+#+end_src
+No third effect: a handler understands two descriptions (spec decision 5). The function runs when the computation runs, inside the bind. The result of update is the result of the write. A missing key is the handler's business (spec decision 1); update inherits whatever read does.
+
+** Store constructor
+#+begin_src racket
+;; Type: (->* () ((Listof (Pairof Any Any))) Any)  ; returns a mutable hasheq
+;; Impure: allocates and mutates a store. Raises exn:fail when the seed repeats a key.
+(define (make-state-store [seed '()])
+  (define store (make-hasheq))
+  (for ([pair (in-list seed)])
+    (when (hash-has-key? store (car pair))
+      (error 'make-state-store "duplicate key in seed: ~e" (car pair)))
+    (hash-set! store (car pair) (cdr pair)))
+  store)
+#+end_src
+The optional seed is a list of key and value pairs. The store is a mutable =hasheq=, so keys are compared with =eq?= (requirement 7): two equal but non-identical strings are two keys, and a seed that repeats an equal-but-not-identical key does not count as a duplicate. A key repeated in the seed (identical) raises a plain =exn:fail= (not =exn:fail:contract=) through =error=, with a message that names the key (requirement 6); no store is returned. Class: I, because it allocates and mutates a store; the caller owns the result. The name =make-state-store= is kept (decision recorded in the spec); it carries no =!= suffix, and the impurity is stated in the comment above the definition. The code matches this design; the only difference is that the type comment gives the result as =Any= rather than a hash-table type.
+
+** Test handler (test file only; I)
+#+begin_src racket
+;; Type: (-> HashEq (-> Any (-> Any Free) Free))
+(define ((state-handler! store) desc k)
+  (cond [(read-state-effect? desc) (k (hash-ref store (read-state-effect-key desc)))]
+        [(write-state-effect? desc)
+         (hash-set! store (write-state-effect-key desc) (write-state-effect-value desc))
+         (k (void))]
+        [else (error "unexpected effect")]))
+#+end_src
+The store is an argument, so no state is shared between runs unless the caller passes the same store (requirement 4). For this handler a missing key raises from =hash-ref=; the real behaviour is the handler's choice (spec decision 1).
+
+** Wiring
+=effects/main.rkt= has one =require= and one =all-from-out= for it; no tests are added for these export names (spec decision 8). The module requires =../freer-monad.rkt= only and provides the two records, the three operations and the store constructor.
+
+** Architecture update
+=detailed-design/architecture.org= and =design/architecture.org= list the state effect; there is no library handler.
+
+* Implementation checks
+The detailed test list is in [[file:../../test-plan/features/state-effect.org][the test plan]]. Tests live in =effects/state-effect.rkt= in =(module+ test)=.
+- Requirement 1: build the three operations on a store without running; the store is unchanged.
+- Requirement 2: write-read, write-write-read, preseeded hash read.
+- Requirement 3: update result equals read-then-write; other key unchanged.
+- Requirement 4: hash read after the run; two stores; one store twice.
+- Requirement 6: empty seed, seeded pairs, duplicate key raises plain =exn:fail= naming the key.
+- Requirement 7: two equal but non-identical string keys are different keys; one object used twice is one key.
+- Requirement 5: inspection of =effects/main.rkt= and the manual; no test in =effects/main.rkt=.
+- Other effects' existing tests pass unchanged (=make test=).
+
+* Open questions
+None.
+
+* Related
+- Spec: [[file:../../design/features/state-effect.org][state effect]].
+- Decisions: [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]].
+- Test plan: [[file:../../test-plan/features/state-effect.org][state effect]].
+- [[file:../architecture.org][Code architecture]].

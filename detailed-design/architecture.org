@@ -7,6 +7,7 @@ Matches the code as built for [[file:features/queue-based-bind.org][queue-based 
 |--------+------+-------|
 | =freer-monad.rkt= | Core of the library: =pure=, =impure=, =perform=, =return=, =>>== (the exported name of the internal =bind=), =run=, =do-m=, =sequence=, =map-m= | Pure. =impure= has three fields: description, continuation, queue. Exports only =pure=, =impure=, =free?=, =return=, =perform=, =run=, =>>==, =do-m=, =sequence=, =map-m=. Internal: =leaf= and =node= (queue structures, opaque), =bind=, =make-impure=, =resume=, =q-append=, =q-pop= |
 | =try-catch.rkt= | =try= and =catch= on the failure effect | Pure. =catch= builds its waiting clause with =perform= and =>>== |
+| =effects/state-effect.rkt= | State effect: =read-state-effect= and =write-state-effect= records, =read-state=, =write-state=, =update-state=, =make-state-store= | Operations are pure; =make-state-store= is impure (allocates a mutable =hasheq=, raises plain =exn:fail= on a duplicate seed key). No library handler; the test handler is in the module's test block. Re-exported by =effects/main.rkt= |
 | =effects/*.rkt= | One module per effect: its description, its constructor, and its tests | Pure. Each builds effects with =perform= |
 
 * Data flow
@@ -17,4 +18,4 @@ Matches the code as built for [[file:features/queue-based-bind.org][queue-based 
 - =run= drives this loop until a pure value is returned.
 
 * Effects
-None. The library performs no effects and holds no state. Handlers are supplied by callers.
+None. The library performs no effects and holds no state. Handlers perform effects and are supplied by callers; a handler of a read-write effect owns its storage, and its caller owns the store ([[file:../design/decisions/0003-pure-and-effectful-code.org][decision 0003]]).

@@ -1,0 +1,38 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-18
+:END:
+#+TITLE: 0003. Pure and effectful code are separated; handlers perform effects
+
+* Context
+The project rules classify code as pure or impure, but do not say where effects are performed. They also say that state-only effects such as an environment use a pure handler that threads state, which conflicts with the idea that handlers perform effects. A new store effect needs a real, mutable store. The rules also do not say when to use a failure and when to raise an exception.
+
+* Options
+** Option A: Pure handlers for state-only effects
+Handlers for effects that only read or write state thread that state through the computation. Handlers are pure for such effects, and impure only for the outside world. Simulating state this way differs from how other effects work, and blurs the line between describing and performing.
+
+** Option B: Handlers always perform
+Monadic procedures only describe programs. Handlers are the only code that performs them. Every handler is therefore on the impure side, whatever the effect.
+
+* Decision
+We will use Option B.
+
+1. Pure code returns values, or monads that describe effects. It never performs effects. A monadic procedure describes a program, for example one that mutates a store.
+2. Effect handlers are the only code that performs a program's effects, for example by mutating the store. Impure code is the handlers and what they call.
+3. A handler for a read-only effect may read a value that the caller supplies. A handler for a read-write effect owns the storage it uses. The owner of an effect handler owns the state it uses; the caller that calls the handler owns the store.
+4. Failures, in the form of the failure effect or a failure value, indicate incorrect program state, for example reading a key that does not exist.
+5. Exceptions are for incorrect syntax or misuse of the API, for example a missing argument, a wrong form in a macro, or a call with the wrong number of arguments.
+
+* Consequences
+- The pure-code rule no longer prescribes pure threaded handlers for state-only effects.
+- The store effect can use real mutable storage owned by the caller.
+- Lookups that find nothing are failures, not exceptions.
+- Impure helpers in the library may raise when the outside world fails (for example a file that cannot be read), and the user's handler decides whether to catch the exception, convert it to a failure, or abort; see the amendment.
+
+* Related
+- [[file:0001-no-contracts.org][0001. No runtime contracts; tests check types]].
+- Rules: =.claude/rules/pure-code.md= and =.claude/rules/monadic-code.md=.
+- [[file:../features/state-effect.org][State effect]] (draft).
+
+* Amendment (2026-10-18)
+Impure helpers that the library offers to help users write handlers may raise an exception when the outside world fails, for example when a file cannot be read. This applies to library impure helpers only. The user's handler decides what happens: it may catch the exception, convert it to a failure, or let it abort the run. This replaces the earlier idea that such helpers return a failure value. Decision items 4 and 5 are unchanged for pure code: failures indicate incorrect program state, and exceptions in pure code are for incorrect syntax or API misuse.

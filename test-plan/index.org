@@ -1,0 +1,23 @@
+#+TITLE: Puzzleten test plan
+
+The test plan for each feature, in [[file:features/][features/]], is the contract for the tests: tests
+implement its cases, and the plan says which spec requirement each case verifies.
+
+* Contents
+- [[file:features/][Features]]: one test plan per feature.
+  - [[file:features/state-effect.org][State effect]]
+- [[file:templates/][Templates]]: the template for a new test plan.
+- [[file:../design/index.org][Design]] and [[file:../detailed-design/index.org][detailed design]]: the specs and designs the plans are based on.
+
+* Conventions
+** Status
+Every test plan has a =STATUS= property in the property drawer at the top of the file,
+and =SPEC= and =DETAILED_DESIGN= properties linking its spec and detailed design:
+=draft= → =accepted= → =implemented=; or =superseded=.
+
+** Naming
+- =features/short-title.org=, the same name as the spec in =design/features/=.
+
+** Writing
+- New documents start from a copy of [[file:templates/feature.org][the template]].
+- Tests live in the source files next to the procedure tested; the plan only describes cases.

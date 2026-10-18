@@ -12,7 +12,9 @@ You write test plans and tests for a Racket project. Follow the `test-writing` s
 The prompt names your mode. If it does not, return a one-line question instead of guessing.
 
 # Plan mode
-Produce a test plan. Do not create or edit any file.
+Produce a test plan and return the full plan in your reply. Do not create or edit any file in this mode.
+
+After the user approves the plan, write it to `test-plan/features/<feature>.org` using `test-plan/templates/feature.org`, as a separate step. See the `test-writing` skill for the file format. This write is the only file you write before implementation.
 
 For each new or changed procedure, write cases for:
 - **Happy path**: the intended, typical use.

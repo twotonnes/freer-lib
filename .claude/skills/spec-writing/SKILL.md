@@ -81,3 +81,6 @@ Reduce program generation time by caching type generators.
 - ❌ Vague requirements → "The system should be fast" → "Generation must complete in <X>ms".
 - ❌ Missing acceptance criteria → Without checkboxes, there's no done definition.
 - ❌ No out-of-scope → Leads to scope creep during implementation.
+
+## Reference example
+[[examples/state-effect-spec.org]] (copy of `design/features/state-effect.org`) is the reference for style, detail, and compactness: short sentences, behaviour only with no code constructs, one numbered requirement per behaviour, explicit out of scope, and every requirement covered by an acceptance criterion.

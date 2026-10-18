@@ -1,0 +1,65 @@
+:PROPERTIES:
+:STATUS: implemented
+:DATE: 2026-10-18
+:END:
+#+TITLE: State effect
+
+* Summary
+A standard effect, in the style of the environment effect, that lets a program read a value by key, write a value by key, and update a value by key with a function. The program only describes these steps; a handler does the reading and writing on a mutable store that the caller owns.
+
+* Scope
+** In scope
+- Three operations that build computations: read a key, write a key, update a key with a function. They are pure: they only describe the effect and never touch the store.
+- A caller-owned mutable store that a handler reads and writes.
+- Creating that store with initial contents, given as a list of key and value pairs.
+- Documentation, tests, and availability through the same entry point as the other standard effects.
+
+** Out of scope
+- Defaults, deleting keys, typed keys or values.
+- Comparing keys by equality: keys that are equal but not the same object are different keys (see requirement 7).
+- Persistence, transactions or rollback, concurrent access, change notification, history.
+- Changes to the core or to the other effects.
+
+* Requirements
+1. Building a read, write or update computation does not read or change the store. Only running it with a handler does.
+2. Reads reflect writes in program order: a read returns the value most recently written to that key earlier in the same computation, or the value the store held for it when the run began.
+3. Update has the same result as a read of the key followed by a write of the function applied to the value read. A write or update to one key does not change any other key.
+4. The store belongs to the caller, who can read it after the run and sees every write the run made. Two runs share writes only if they are given the same store.
+5. The effect, including store creation, is available through the same entry point as the other standard effects and is described in the reference documentation.
+6. A store can be created empty or from a list of key and value pairs; the new store holds exactly those pairs. A key that appears more than once in the list is misuse of the interface and raises a plain failure exception (not a contract violation) whose message names the key; no store is returned. A missing key is not an error of the store creation, and what a read of a missing key does is left to the handler.
+7. Keys are compared by identity. Strings, lists or other compound values are the same key only when they are the same object; a read or write with a key that is equal to, but not the same object as, an existing key addresses a different key.
+
+* Architecture fit
+- One more module among the standard effects; no new component and no change to the core.
+- The operations return computations that describe the effect and are pure. The store and the handler that interprets the descriptions are the effectful part. This follows [[file:../decisions/0003-pure-and-effectful-code.org][decision 0003]].
+- No contracts are added ([[file:../decisions/0001-no-contracts.org][decision 0001]]); this is a new feature, so a minor release under [[file:../decisions/0002-versioning-strategy.org][decision 0002]].
+
+* Acceptance criteria
+- [x] Building a read, a write and an update without running them leaves a store unchanged (requirement 1).
+- [x] Write then read, and write twice then read, give the expected values; a read sees what the store held at the start of the run (requirement 2).
+- [x] Update gives the same value and store content as read then write, and leaves other keys alone (requirement 3).
+- [x] After a run the caller sees the writes in the store; the same computation with two stores does not share writes (requirement 4).
+- [x] The standard effects entry point exports the operations and the reference documentation lists them, by inspection (requirement 5).
+- [x] A store created from a list of pairs holds exactly those pairs; an empty one holds none; a list with a repeated key raises a plain exception whose message names the key (requirement 6).
+- [x] Two keys that are equal but not identical (for example two separately built strings) are different keys; the same object used twice is one key (requirement 7).
+- [x] The other effects' existing tests pass unchanged.
+
+* Decided
+1. Missing key: the library says nothing; the handler decides, for example by using the failure effect. No default argument.
+2. Handler: the user writes it, as with the environment effect. The tests define a small handler in the test file.
+3. Seeding: kept. The seed is a list of key and value pairs (not a hash, which could not contain duplicates). Duplicate keys raise a plain exception naming the key, because that is misuse of the interface ([[file:../decisions/0003-pure-and-effectful-code.org][decision 0003]]).
+4. Depth of 100 000 operations: dropped; constant-cost resumption is covered by [[file:queue-based-bind.org][queue-based bind]].
+5. Update: not a third effect; it is a read followed by a write, and the function is applied when the computation runs.
+6. Key identity: keys are compared by identity, not equality, so compound keys must be the same object to be the same key.
+7. Duplicate-key exception: a plain failure exception, not a contract violation; the message names the key.
+8. Entry point: no tests are required for the standard effects entry point; requirement 5 is checked by inspection.
+
+* Open questions
+None.
+
+* Related
+- [[file:../decisions/0003-pure-and-effectful-code.org][0003. Pure and effectful code]].
+- [[file:../decisions/0001-no-contracts.org][0001]], [[file:../decisions/0002-versioning-strategy.org][0002]].
+- [[file:../architecture.org][Architecture]].
+- Detailed design: [[file:../../detailed-design/features/state-effect.org][state effect]].
+- Test plan: [[file:../../test-plan/features/state-effect.org][state effect]].

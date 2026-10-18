@@ -27,5 +27,6 @@ plus checks that exist only because of this design.
 - Implementation questions to resolve before the design can be accepted.
 
 * Related
+- The test plan: [[file:../../test-plan/features/short-title.org][Test plan]] (template: [[file:../../test-plan/templates/feature.org][test plan template]]).
 - The spec, and other detailed designs this depends on or affects.
 - [[file:../architecture.org][Code architecture]]: update it when modules, data flow, or effects change.

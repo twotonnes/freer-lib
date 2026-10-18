@@ -1,0 +1,27 @@
+:PROPERTIES:
+:STATUS: draft
+:DATE: YYYY-MM-DD
+:SPEC: ../../design/features/short-title.org
+:DETAILED_DESIGN: ../../detailed-design/features/short-title.org
+:END:
+#+TITLE: Feature title: test plan
+
+One line: what is tested, and the number of cases.
+
+Fixture: shared helpers and setup, and where they are defined.
+
+* Cases
+** Group (procedure or behaviour)
+1. procedure: should <expected> when <condition>. Given ... When ... Then ...
+
+* Coverage
+| Spec item     | Cases / check |
+|---------------+---------------|
+| Requirement 1 | 1             |
+
+* Open questions
+- ...
+
+* Related
+- [[file:../../design/features/short-title.org][Spec]]
+- [[file:../../detailed-design/features/short-title.org][Detailed design]]
