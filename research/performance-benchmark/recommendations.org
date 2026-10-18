@@ -1,0 +1,97 @@
+:PROPERTIES:
+:DATE: 2026-10-18
+:STATUS: final
+:END:
+#+TITLE: Recommendations for improving freer-lib performance
+
+Every number below comes from [[file:../data/performance-benchmark/summary.org][summary.org]] (cited as "summary, <case>", at n = 131072 unless stated), as discussed in the [[file:performance-benchmark.org][study]]. "Measured" means the number is in the summary. "Inferred" means it is a reading of measured numbers, not tested.
+
+* Question
+What should be done to make freer-lib faster, given the outcome of the performance benchmark study, and what does the study not support?
+
+* Summary
+Measured: a monadic step costs 2 to 9 us in the workloads (ratio 2.7 to 20.5 against plain Racket). One effect through the handler costs 44 ns, a bind of a finished value 8 ns. Time per operation is constant in n for most cases. Three cases grow with n: left-nested binds, =sequence=, and non-tail recursion. The failure effect is not slower than exceptions.
+
+No hypothesis was tried, so no gain is measured for any. The only library change with direct evidence behind it is S1 (reduce allocation per bind and queue node), aimed at the growth cases; but a cheap experiment on a scratch copy should come first, because the data do not show that allocation causes the growth. S5 is second. The rest have little or no support. Separately, users can avoid the shapes that grow (usage guidelines, for the Scribble manual).
+
+* Findings
+** Measured cases the recommendations rest on
+| Case | Number (summary) | Label |
+|------+------------------+-------|
+| U4 left, 182 ns per bind, slope 1.11 whole, 1.26 upper half; 71 ns at n = 64; ratio 86.6; GC share 0.59 | summary, u4 left | measured |
+| U4 right, 44 ns per bind, slope 1.00 | summary, u4 right | measured |
+| U6 =sequence=, 273 ns per element, slope 1.12 and 1.19; 107 ns at n = 64; GC share 0.42; ratio 36.5 | summary, u6 sequence | measured |
+| U6 =map-m=, 99 ns per element, slope 1.05 and 0.99; ratio 10.3 | summary, u6 map-m | measured |
+| U5 non-tail, 194 ns, slope 1.09 and 1.13; 106 ns at n = 64; GC share 0.47; U5 tail 45 ns, slope 1.00 | summary, u5 | measured |
+| U3, 44 ns per effect, ratio 20.6, flat in n | summary, u3 default | measured |
+| U1, 8 ns per bind against 3 ns plain, ratio 3.0 | summary, u1 default | measured |
+| U2, 25 ns per run | summary, u2 default | measured |
+| U7, 46 ns at k = 1 to 58 ns at k = 8; plain 5 to 17 ns | summary, u7 | measured |
+| U8, ratios 0.84, 0.37, 0.72 (monadic faster than exceptions) | summary, u8 | measured |
+| U9, 6.28 us per resume, slope 1.00, ratio 11.7 | summary, u9 default | measured |
+| W5, 1.95 us against 0.095 us, ratio 20.5; W2 ratio 11.8 (box), 11.6 (threaded); W3 ratio 10.1; W4 ratio 5.3 and 4.9; W1 ratio 2.7 | summary, w1 to w5 | measured |
+| Bytes per operation: 272 B per effect (U3), 32 B per bind (U1); flat in n, time not (U4 left 431 to 432 B) | summary, u1, u3, u4 left | measured, absolute values not trusted |
+
+** What follows from them (inferred)
+- Inferred: the effect, not the bind, is the dear step (44 ns against 8 ns). The =perform= and handler path is where most per-step time is.
+- Inferred: right-nested and tail-recursive code costs the same as a plain sequence of effects (U4 right, U5 tail equal U3 within 1 ns). Left-nested binds, =sequence= and non-tail recursion cost up to four times more per step at n = 131072 and grow.
+- Inferred: the growth is not only GC. U4 left and U6 =sequence= rise from n = 4096 with GC share 0. Cache effects are a candidate; not tested.
+- Inferred: ratios against plain code are inflated where the plain step is 2 to 10 ns (U1 to U6, W2, W5). They say how far the library is from a bare loop, not from a realistic handler.
+- Inferred: handler stacking and failure handling show no library-specific problem (U7, U8).
+
+** The hypotheses S1 to S6
+| Id | Study supports | Study does not support |
+|----+----------------+------------------------|
+| S1 fewer allocations per bind and queue node | Targets the cases that grow (U4 left, U6 =sequence=, U5 non-tail) and have the highest ratios (37 to 87); also the constant factor in U3 and W5 (ratio about 20). Inferred. | That allocation causes the growth: bytes per operation are flat while time grows 2.6 times (U4 left). No gain is measured. |
+| S2 specialise pure binds | The gap is about 5 ns per bind (U1: 8 against 3 ns). Measured. | Any workload benefit: no workload is shown to be dominated by pure binds. |
+| S3 fuse =do-m= | Nothing. | Any claim: no case separates expansion cost from run cost. |
+| S4 fast path in =run= | A fixed cost of 25 ns per run (U2) and 12 ns per extra handler level in both versions (U7). Measured. | That dispatch is a cost worth a high-risk change: nothing isolates it, and the plain code pays the same per handler level. |
+| S5 avoid closure creation in =perform= | Effect 44 ns against 8 ns for a bind (U1, U3); 272 B against 32 B per bind. Inferred, bytes not trusted. | How much of the 44 ns is closure creation: not measured. |
+| S6 store rotated queue for repeated resumption | Nothing. | Any problem: U9 is flat in n (slope 1.00) at one fixed depth. The recorded 53 ms against 18 ms for 100 resumes at depth 20 000 was not reproduced. |
+
+* Scenarios
+The realistic choices:
+1. *Change nothing.* Costs nothing; accepts ratios of 5 to 20 on state and random workloads, which are 2 to 9 us per operation in absolute terms.
+2. *Usage guidelines only.* Costs documentation. Gains: users avoid the growing shapes. The gain from avoiding them is measured only as a difference between shapes (U4 right 44 ns against U4 left 182 ns; U6 =map-m= 99 ns against =sequence= 273 ns; U5 tail 45 ns against non-tail 194 ns), not as a gain in a real program.
+3. *Diagnose, then S1, then S5.* Costs a scratch-copy experiment first, then a spec and code. Gain: unmeasured.
+4. *S2, S3, S4, S6.* No evidence to justify them now.
+
+* Recommendation
+Ranked by evidence, then cost. The two kinds of action are kept apart.
+
+** Library changes (each needs a design spec in design/ before any code)
+1. *Diagnose the growth, no library change (cheapest, do first).* Basis: U4 left, U6 =sequence=, U5 non-tail grow with n with flat bytes (measured); the cause is not established (inferred GC plus another cause). Action: on a scratch copy, time U4 left and U6 =sequence= with a larger heap or with the GC share removed. If the growth is mutator time and not GC, S1 may not help.
+2. *S1, reduce allocation per bind and queue node.* Basis: highest evidence of any scenario, as above; low cost; internal. Gain: not measured. Evaluate on U4 left, U6 =sequence=, U5 non-tail, U3 and W5. Keep it only if the U4 left and U6 =sequence= slopes fall toward 1, and the U3 and W5 ratios move outside the baseline spread (the W1 ratio ranged from 2.4 to 3.0 across n).
+3. *S5, avoid closure creation in =perform=.* Basis: the effect is the dear step (U3 44 ns against U1 8 ns), inferred. Low cost; risk: equality on waiting computations already changed once. Do it if S1 does not move U3 and W5.
+4. *S2 (pure binds).* Room is about 5 ns per bind (U1). Only if a real program is shown to have many pure binds.
+5. *S3, S4, S6.* Not recommended on this evidence. S6 would also need a new spec, as the queue-based-bind spec puts repeated resumption out of scope.
+6. *State-specific work.* W2 (11.6 to 11.8) and W5 (20.5) have the highest ratios, but none of S1 to S6 targets the state effect, and the harness handler is the harness's own. Whether it is worth a spec is for the user to decide (study, open question 3); no measurement here separates handler cost from library cost.
+
+** Usage guidelines (for the Scribble manual; not library work)
+1. Prefer =map-m= to =sequence= over long lists: 99 ns against 273 ns per element at n = 131072 (measured, U6; different operations in the benchmark, equal in intent).
+2. Prefer right-nested binds to left-nested ones on long chains: 44 ns against 182 ns per bind (measured, U4).
+3. Prefer tail-recursive effectful loops to non-tail ones when depth is large: 45 ns against 194 ns per step (measured, U5).
+4. Do not avoid the failure effect for performance: it was not slower than exceptions in any variant (measured, U8).
+5. Do not expect extra handler levels to cost much more than plain wrapping: 12 ns per level from k = 1 to 8 in both versions (measured, U7).
+The guideline gains are differences between shapes in micro-benchmarks, up to n = 131072 only. They are not measured on a real program, and the manual should say so.
+
+** Caveats from the study
+- One machine (Intel i7-8565U), Racket v9.3 CS, one run of the whole study.
+- Governor powersave, load average 0.5 to 1.8; the machine was not idle.
+- Byte figures are not trusted in absolute terms (a one-line check read about 17 MB for about 0.1 MB); only the comparison between cases is used here.
+- Two flagged points: W1 at n = 16384, monadic and plain. The monadic time falls from 83.1 to 69.1 ms per run across the 30 samples (inferred frequency drift, not established); the ratio at that point (3.02) is above its neighbours (2.5 to 2.9). The plain flag, with a small IQR and 15 samples, is unexplained. Neither point is used for any recommendation.
+- Plain micro-benchmark times of 2 to 17 ns sit near the table's 1 ns resolution; read their ratios as relative only.
+- Synthetic workloads; no real application was measured.
+
+* Open questions
+1. Should any library change be specified next? Options: none (accept the cost); only the diagnosis of the growth followed by S1; S1 and S5 together. The user decides; a spec in design/ comes before any code.
+2. Is a ratio of 5 to 20 on state and random workloads (2 to 9 us per operation) acceptable? If yes, no scenario is worth its risk.
+3. Should usage guidelines 1 to 5 go into the Scribble manual? That is a separate task, not done here.
+4. Should a repeat run with the performance governor and an idle machine be made before deciding, to settle the W1 drift and the noise level? It was not done.
+5. Is a state-specific improvement worth a spec (see recommendation 6)?
+
+* Related
+- [[file:performance-benchmark.org][Performance benchmark study]]: method, findings, scenarios S1 to S6.
+- [[file:../data/performance-benchmark/summary.org][Study summary tables]].
+- [[file:../../design/features/queue-based-bind.org][Queue-based bind (spec)]] and [[file:../../detailed-design/features/queue-based-bind.org][detailed design]]: the representation S1, S5 and S6 would touch.
+- [[file:../../design/features/state-effect.org][State effect (spec)]].

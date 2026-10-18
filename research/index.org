@@ -35,4 +35,6 @@ investigations done as a step of other work.
 - Link to the research from the spec it informs, once there is one.
 
 * Contents
-- [[file:disabling-contracts.org][Disabling contracts]]: how much contracts cost and how to remove or limit that cost.
+- =performance-benchmark/=: the performance benchmark study and what follows from it. Its raw data is in =data/performance-benchmark/=.
+  - [[file:performance-benchmark/performance-benchmark.org][Performance benchmark]]: plan and outcome of measuring monadic code against plain Racket on five workloads and nine micro-benchmarks (final).
+  - [[file:performance-benchmark/recommendations.org][Recommendations for improving performance]]: ranked library changes and usage guidelines, based on the study (final).
