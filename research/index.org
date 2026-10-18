@@ -35,4 +35,4 @@ investigations done as a step of other work.
 - Link to the research from the spec it informs, once there is one.
 
 * Contents
-- [[file:disabling-contracts.org][Disabling contracts]]: how much contracts cost and how to remove or limit that cost.
+- [[file:performance-benchmark.org][Performance benchmark]]: plan (accepted, nothing measured yet) for measuring monadic code against plain Racket on several use cases.

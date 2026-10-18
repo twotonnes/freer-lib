@@ -1,0 +1,207 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-18
+:SPEC: ../../research/performance-benchmark.org
+:END:
+#+TITLE: Performance benchmark harness: detailed design
+
+* Summary
+How the harness of the [[file:../../research/performance-benchmark.org][performance benchmark research plan]] is built. There is no feature spec: the accepted research plan governs scope, workloads, metrics and constraints, and this document only says which modules and procedures realise them. The harness lives in =benchmark/=, measures the library through its public interface, and changes no library code.
+
+* Modules and procedures
+Plan items are named by their section or constraint number. P = pure, I = impure (clock, GC, file system, process environment).
+
+| Plan item                                   | Module                       | Procedure (class)                                                        |
+|---------------------------------------------+------------------------------+--------------------------------------------------------------------------|
+| Use case record (monadic, plain, size, ops) | =benchmark/case.rkt=         | =bench-case= (P, structure), =case-check= (P: equality of results)       |
+| W1 request pipeline                         | =benchmark/workloads.rkt=    | =w1-inputs= (P), =w1-monadic= (P), =w1-plain= (I: log sink call), =w1-case= (P) |
+| W2 ledger (box and threaded plain variants) | =benchmark/workloads.rkt=    | =w2-inputs=, =w2-monadic=, =w2-plain-box=, =w2-plain-threaded=, =w2-case= |
+| W3 parser with backtracking                 | =benchmark/workloads.rkt=    | =w3-inputs=, =w3-monadic=, =w3-plain=, =w3-case=                         |
+| W4 tree traversal (complete and degenerate) | =benchmark/workloads.rkt=    | =w4-inputs=, =w4-monadic=, =w4-plain=, =w4-case=                         |
+| W5 Monte Carlo                              | =benchmark/workloads.rkt=    | =w5-inputs=, =w5-monadic=, =w5-plain=, =w5-case=                         |
+| U1 to U9 micro-benchmarks                   | =benchmark/micro.rkt=        | =u1-case= to =u9-case= (P: each builds a =bench-case= from n)            |
+| Handlers, sinks and the state handler       | =benchmark/handlers.rkt=     | =bench-handler=, =state-handler=, =null-log-sink= (I)                    |
+| Timing, GC, allocation, empty-run subtraction | =benchmark/measure.rkt=    | =measure-point= (I), =empty-run-cost= (I), =time-run= (I)                |
+| Median, min, max, IQR, spread flag, slope   | =benchmark/stats.rkt=        | =summarise=, =spread-flag?=, =rerun-point?=, =split-positive=, =log-log-slope= (P) |
+| Environment recording                       | =benchmark/environment.rkt=  | =record-environment= (I: runs =racket --version=, reads system files); parameters =current-racket-command=, =current-cpuinfo-path=, =current-meminfo-path=, =current-loadavg-path=, =current-uname-command=, =current-power-dir= |
+| Output to =research/data/performance-benchmark/= | =benchmark/report.rkt=  | =current-output-root= (parameter, default below), =write-raw=, =write-summary= (I: file writes below the parameter), =render-summary= (P) |
+| Entry point and selection of one case       | =benchmark/run.rkt=          | =run-study= (I; keywords =#:cases=, =#:repetitions=), =main= submodule (I) |
+| Make target (constraints 5 and 6)           | =makefile=                   | target =benchmark= (not a dependency of =test=, =build=, =install=)      |
+
+* Design
+** Directory and loading
+All harness modules are in =benchmark/= at the root of the package, next to =effects/=. Constraint 5 (no work at module level): every module except =benchmark/run.rkt= only defines procedures and values built from constants. =benchmark/run.rkt= starts the study only from its =main= submodule, which =racket benchmark/run.rkt= runs and loading or =raco test= on the module does not call (confirmed, see the constraint table, row 5). Modules never read the clock, write a file or call the library's handler at instantiation.
+
+** Use case record
+#+begin_src racket
+;; (struct bench-case (id variant sizes ops monadic plain equal?))
+;; id        : Symbol            ; 'w1 ... 'w5, 'u1 ... 'u9
+;; variant   : Symbol            ; e.g. 'box or 'threaded (W2), 'complete or 'degenerate (W4), 'left or 'right (U4)
+;; sizes     : (Listof Natural)  ; the size series for this case
+;; ops       : (-> Natural Natural)       ; number of operations at n (divisor for per-operation figures)
+;; monadic   : (-> Natural (-> Any))      ; given n, builds inputs outside the timed region and returns a thunk to time
+;; plain     : (-> Natural (-> Any))      ; same for the plain counterpart
+;; equal?    : (-> Any Any Boolean)       ; the per-workload comparison from the plan ("Result compared")
+#+end_src
+The thunk returned by =monadic= and =plain= contains only the work being measured. Input generation (fixed arithmetic or a fixed seed) happens in the outer procedure, so it is outside the timed region. The thunk runs the whole computation: for monadic code it builds the computation and calls the library's =run= with the harness handler, because building and running are both costs of the library. Variants are separate =bench-case= values, so they are reported separately as the plan asks.
+
+** Workloads
+Each =wN-case= takes no argument and returns the list of =bench-case= values of the workload, one per variant. Inputs, effects, monadic version, plain counterpart and compared result are exactly as in the plan; this section records only choices the plan leaves open.
+- =w1-monadic=: one computation per request with =do-m=, =read-env=, one log call, =failure= wrapped in =try= and =catch= per request, combined with =map-m=. The handler answers env, log and failure descriptions. =w1-plain=: loop with configuration as arguments, =with-handlers= and =raise=, one call to the log sink per request.
+- =w2-monadic=: one =do-m= computation per transaction using =read-state=, =write-state= (or =update-state=), and log, sequenced over all transactions. The ledger is a store from =make-state-store= created inside the thunk, so every timed run starts from the same ledger. =w2-plain-box= and =w2-plain-threaded= are the two plain variants.
+- =w3-monadic=: recursive descent on the text read through =read-env=; alternatives with =try= and =catch=. The position is an ordinary value threaded through the parser. The text generator bounds nesting depth by the constant =w3-max-depth= in =benchmark/workloads.rkt=, value 64, and never exceeds it at any n. Compared: the parse tree and the count of backtracks (kept in the result value, not in a state effect).
+- =w4-monadic=: non-tail recursive monadic procedure using =update-state= on a total and a counter, and exactly one log call per node (plan, W4 Effects), so the log count equals the node count. Trees are built in the outer procedure; n is rounded to the nearest 2^k - 1 for the complete tree, and the actual node count is the operation count.
+- =w5-monadic=: loop of n iterations, two =rnd= effects and one =update-state= per iteration. The seeded generator is created inside the thunk so that monadic and plain versions consume the same sequence; =w5-plain= draws in the same order. The check before timing fails if the final counts differ.
+
+** Handlers, sinks and state
+Handlers have the shape the library's =run= expects: a procedure from a description and a continuation to the next computation. They are impure because they write to the store or the log sink, and they live only in the harness.
+- =bench-handler= is built from the list of effects a case uses and dispatches on the description type (env, log, rnd, failure, state). It does the same work the plain counterpart does for the same effect (plan: "Handlers and plain code do the same work per effect").
+- =state-handler= handles read-state and write-state descriptions on a store from =make-state-store=. The library ships no state handler (state-effect spec, decision 2), so the harness defines this one, with the same behaviour as the state-effect test handler.
+- =null-log-sink= discards messages. Both versions send log output to it (plan: "discarded sink").
+No library effect handler is added; the harness only supplies handlers to =run=.
+
+** Micro-benchmarks
+Each =uN-case= takes no argument and returns a list of =bench-case= values (one per variant), all built with the same =bench-case= type. The monadic and plain pair, the operation count, and what each isolates are as in the plan table.
+| Id | Variants | ops(n) | Notes |
+|----+----------+--------+-------|
+| U1 | one     | n binds | chain of =>>= over =return= against =let*= |
+| U2 | one     | 1 run (batch of n runs per timed thunk to exceed 1 ms) | one =perform=, one handler, against one call |
+| U3 | one     | n effects | n =perform= in one =do-m= block |
+| U4 | left, right | n binds | the nesting shape is the variant |
+| U5 | non-tail, tail | n calls | depth n; exponent is reported by =log-log-slope= |
+| U6 | sequence, map-m | n elements | against =map= and =for/list= |
+| U7 | k = 1, 2, 4, 8 (size parameter is k, n fixed per variant) | n effects | nested handlers composed into one handler passed to =run=; plain side is k wrapper procedures |
+| U8 | no failure, failure at depth d | n tries | =try= and =catch= against =with-handlers= and =raise= |
+| U9 | one     | n resumes of one waiting computation at fixed depth | measured to inform future work only |
+Where a timed run would be shorter than 1 ms (plan: reliability limits), the thunk repeats the work b times and =ops= counts all b repetitions. The batch factor b is chosen by =time-run= in the pilot and recorded with the result.
+
+** Equality check before timing
+=case-check= runs the monadic thunk and the plain thunk once for every size in the series and applies =equal?= from the case. A mismatch raises =exn:fail= naming the case id, variant and n, and the case is voided: nothing is timed or written for it other than the failure record in the summary (plan, constraint 3). Misuse of the harness (unknown case id on the command line) raises an exception; a mismatch is a failed check, not misuse, and is reported without stopping the other cases.
+
+** Signatures
+| Procedure        | Arguments                                                    | Returns |
+|------------------+--------------------------------------------------------------+---------|
+| =time-run=       | thunk, ops-per-call                                          | positive exact integer batch factor |
+| =measure-point=  | thunk, ops, =#:repetitions r=                                | sample record: time list, bytes list, GC list, ops, batch factor |
+| =bench-handler=  | effect-names, store-or-config, optional log sink             | handler procedure |
+| =render-summary= | list of case results (see the table below)                   | string |
+| =split-positive= | list of =(n . median)= pairs                                 | =(values kept excluded)=, lists of the input pairs |
+| =log-log-slope=  | ns, times, =#:range= (=(cons lo hi)= or =#f=)                | record with =slope= and =range= |
+A case result is a record with these fields:
+| Field | Content |
+|-------+---------|
+| =id= | symbol |
+| =variant= | symbol |
+| =sizes= | list of n |
+| =monadic= | per n, the sample record and its summary for the monadic version |
+| =plain= | the same for the plain version |
+| =flags= | per n, whether the point was flagged and whether it was re-run |
+| =excluded= | list of n whose subtracted median was not positive |
+| =failure= | =#f=, or the failed check (id, variant, n) when =case-check= raised |
+=render-summary=, =write-raw= and =write-summary= take this record (or a list of it).
+
+=measure-point= wraps a thunk that is already batched, so it records the batch factor as 1 and =run-study= replaces it with the factor from =time-run=.
+
+** Measurement procedure
+=measure-point= takes a thunk, the number of operations and the repetition count (keyword), and returns a record of raw samples. It is impure (clock, GC, counters).
+1. Warm-up: call the thunk 3 times and discard the results (plan: Procedure).
+2. Empty-run cost: =empty-run-cost= times and allocation-measures a thunk that does nothing, once per session, using the same bracket as step 3, and the result is subtracted from every sample (plan: Metrics, allocation).
+3. Timed run, repeated r times (r = 15 by default; at least 9 if the pilot shows the time budget is exceeded):
+   - Collect garbage with a major collection (=(collect-garbage)=) before the run, so every run starts with the same heap.
+   - Read cumulative allocation, =current-gc-milliseconds= and =current-inexact-monotonic-milliseconds= immediately before the call.
+   - Call the thunk once, with no counter calls inside it.
+   - Read the same three immediately after.
+   - Record time, allocated bytes (difference of =(current-memory-use 'cumulative)=) and GC milliseconds, each less the empty-run value.
+   Allocated bytes are read from =(current-memory-use 'cumulative)= and used as reported, with no separate check of the counter (decision: user, branch performance-benchmark, 2026-10-18; see Q2 of the plan).
+   The readings are taken around one call of the thunk, outside the inner loop of the work, so the counter calls add only their constant cost, which the empty run removes.
+4. =summarise= (P) computes median, min, max and interquartile range of time and allocation, divides by =ops= for per-operation figures, and the GC time share as GC milliseconds over wall milliseconds.
+5. =spread-flag?= (P) is true when the interquartile range exceeds 20% of the median (threshold proposed; recorded in the output). =rerun-point?= (P) takes the point's summary and returns a boolean, true when the point is to be re-run (it uses =spread-flag?=). =run-study= calls =rerun-point?= once per point and, when true, re-runs the point once with the repetitions doubled; the flag is kept in the output whichever way the second run goes. Points are never dropped silently.
+6. Overhead ratio is the monadic median over the plain median at each n, computed in =render-summary=.
+7. Scaling exponent: =log-log-slope= is the slope of a least-squares line of log2(median time) against log2(n) over the sizes of the series. Points whose subtracted median is not positive are separated beforehand by =split-positive= (P): it takes a list of points, each a pair =(n . median)=, and returns =(values kept excluded)=, each a list of the input points unchanged, and the summary lists the excluded ones. The fit range is given as the first and last n, and the default range is the whole series; a second fit over the upper half of the series is also reported so a change at large n is visible. Monadic and plain are fitted separately. The result carries the range with the slope.
+
+** Environment recording
+=record-environment= returns an association list that =write-raw= stores with every result file. Keys are symbols, values strings or numbers:
+| Key | Source | Value |
+|-----+--------+-------|
+| =racket-version= | output of =racket --version= | string |
+| =vm= | =(system-type 'vm)= | string |
+| =cpu-model= | =/proc/cpuinfo= | string |
+| =core-count= | =/proc/cpuinfo= | number |
+| =memory= | =/proc/meminfo= | string |
+| =os= | =uname= | string |
+| =load-start= | =/proc/loadavg=, at the start of the study | string |
+| =load-end= | =/proc/loadavg=, at the end of the study | string |
+| =governor= | the cpufreq policy file (=cpufreq/policy0/scaling_governor=) under =current-power-dir= | string |
+| =power-source= | the =power_supply= directory under =current-power-dir=, if present | string, else "unavailable" |
+Every key is always present; the value of an unreadable source is the string "unavailable".
+The paths and commands it reads are parameters (=current-racket-command=, =current-cpuinfo-path=, =current-meminfo-path=, =current-loadavg-path=, =current-uname-command=, =current-power-dir=), with the values above as defaults, so that tests can point them at missing files and force "unavailable" entries. Where a value cannot be read, the entry says "unavailable" instead of being omitted (see the table). The harness does not change any setting; it only records, and the user keeps the machine idle.
+
+** Output
+Raw samples go to one file per use case, in plain text, as =research/data/performance-benchmark/raw-<id>-<variant>.rktd=: one record per (version, n) with all samples, operation count and batch factor. The summary goes to =summary.org= (tables of median, min, max, IQR, bytes per operation, GC share, overhead ratio, flag, slope with range) and =environment.rktd=. =research/data/= exists in the repository and is empty, so the harness creates =performance-benchmark/= itself. Files are written by =write-raw= and =write-summary= only after a case finishes, so a stopped run leaves complete files for the finished cases and nothing for the rest. The data is committed with the study (plan Q4).
+
+=current-output-root= is a parameter in =benchmark/report.rkt= holding the output directory. Its default is =research/data/performance-benchmark/=, resolved relative to the repository root (not the working directory). =write-raw=, =write-summary= and the write of =environment.rktd= write only below this parameter's value, which keeps constraint 4. It is a test seam: tests set it to a temporary directory, so no test writes into the repository. =run-study= does not set it and so uses the value the caller has given it, the default when none.
+
+** Interface details
+Choices the plan leaves open; all of these are pure unless stated.
+1. =summarise=: takes a list of real samples and returns a record with fields =median=, =min=, =max=, =iqr= and =quartile-method=, whose value is the symbol ='R-7=. Quartiles use linear interpolation between order statistics (R-7). Reason: it is defined for any sample count of at least one, needs no case split on odd or even counts (unlike Tukey's hinges), and is the default of common tools, so results can be cross-checked.
+2. =spread-flag?=: takes the summary record and a threshold (default 0.20) and returns a boolean. It is true when iqr > threshold * median (strict); equality is not flagged.
+3. =log-log-slope=: takes the list of n values, the list of median times, and the keyword =#:range= (a pair of first and last n, or =#f= for the whole series, the default), and returns a record with =slope= and the range (first and last n). The upper-half fit is a second call with the upper half of the series, reported alongside the whole-series fit. Fewer than two points in the fit raises =exn:fail= (misuse). A zero or negative time also raises an exception, because it cannot arise after empty-run subtraction in a valid run. The harness therefore guards before calling with =split-positive=: a point whose subtracted median is not positive is flagged and excluded from the fit, and the summary says so.
+4. =case-check=: stops at the first mismatch and raises =exn:fail= naming case id, variant and n. For an empty sizes list it returns without error and reports zero points checked; on success it returns the number of points checked.
+5. Batch factor: =time-run= chooses the batch factor during the pilot and passes it to =u2-case= as an argument. =u2-case= uses factor 1 when none is given.
+6. W1 log sink: =w1-plain= and =w1-monadic= (and the equivalents of the other workloads that log) take the log sink as an argument, with =null-log-sink= as the default.
+7. W3 text length: the size parameter n is the exact character count of the generated text.
+8. W5 draw trace: W5 does not expose its draws; equality is checked on the final count only, as the plan states.
+9. Handlers and unknown description: =bench-handler= and =state-handler= raise =exn:fail= naming the unknown description. This is misuse of the harness, not a failure, and =try= does not catch it.
+
+** Empty and degenerate inputs
+| Call | Result |
+|------+--------|
+| =summarise= on an empty list | raises =exn:fail= |
+| =log-log-slope= with fewer than two points | raises =exn:fail= |
+| =split-positive= on an empty list | returns two empty lists |
+| =rerun-point?= on a summary with iqr 0 and median 0 | returns =#f= (0 is not greater than 0) |
+| =run-study= with =#:repetitions= below 1 | raises =exn:fail= |
+| =run-study= with =#:cases= ='()= | writes =summary.org= with the header only (and =environment.rktd=), and no raw file |
+
+** Entry point and make target
+=makefile= gets a target =benchmark= that runs =raco make benchmark/run.rkt= and then =racket benchmark/run.rkt=. This makes sure the code runs compiled and under plain =racket= (constraints 1 and 2). =run-study= takes two optional keyword arguments: =#:cases=, a list of =bench-case= values (default: all cases), and =#:repetitions=, a positive integer (default 15). The default run and =make benchmark= use the defaults; the output root is set with =current-output-root=. The =main= submodule reads no environment variable and passes no output root on. A case id given on the command line selects that case, for example =make benchmark CASE=w3= passes =w3= as the argument. =case-by-id= in =benchmark/run.rkt= takes an optional id (symbol or string) and returns the list of =bench-case= values for that id (all its variants); with no argument it returns all cases. An unknown id raises =exn:fail= (misuse). The =main= submodule calls it with the command-line argument, if any. The target is not a prerequisite of =test=, =build=, =compile=, =install= or =docs=. The pilot (sizes 2^6 to 2^17) is the default size series; =sizes= in each =bench-case= is where it is cut or extended after the pilot.
+
+** Constraints, and where each is realised
+| Plan constraint                  | Realised by |
+|----------------------------------+-------------|
+| 1 No errortrace                  | =make benchmark= runs plain =racket= on compiled code, so no instrumentation is present by construction; =run-study= does not check for it |
+| 2 Compiled                       | =raco make= before =racket= in the target |
+| 3 Equal results first            | =case-check= |
+| 4 Output location                | =report.rkt= writes only below =research/data/performance-benchmark/= |
+| 5 Kept out of =make test=        | no work at module level; entry in the =main= submodule of =benchmark/run.rkt=. Finding: a test on Racket 9.3 CS showed that =raco test= on a directory or on a file runs only the =test= submodule, while =racket= on the file runs =main=. No change to =info.rkt= is needed. |
+| 6 Not part of the build          | makefile prerequisites unchanged |
+| 7 No library change              | harness requires only the public modules (=main.rkt=, =try-catch.rkt=, =effects/*.rkt=); scenarios S1 to S6 are not part of this design and are tried on scratch copies |
+
+** Effects and the pure/impure boundary
+The harness performs effects: it reads the clock and memory counters, forces collections, runs =racket --version=, reads system files and writes files. This is outside the library and not in conflict with [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]]: the library's pure code still only describes effects, and the harness is the impure shell around it, just as the library's own handlers are. Inside the harness, pure code is kept separate: =summarise=, =spread-flag?=, =rerun-point?=, =split-positive=, =log-log-slope=, =render-summary=, input generators and the computation builders (=wN-monadic=, =uN-case=) return values and do no I/O. Impure code is limited to =measure.rkt=, =environment.rkt=, =report.rkt=, =handlers.rkt=, the plain counterparts that call the log sink or a box, and =run.rkt=. The library code it measures is unchanged, and no library effect handler is added. Handlers defined here (including the state handler) are used by the harness only and are not exported from =main.rkt= or =effects/main.rkt=. =detailed-design/architecture.org= is not updated for =benchmark/=: it is not part of the library, and a note there is added when the harness is built, if the user wants one.
+
+* Implementation checks
+The plan has no acceptance criteria in the spec sense; these checks derive from its constraints and metrics. Tests of pure harness procedures live next to them in =(module+ test)=; the test plan is written after this design is accepted.
+- =summarise=, =spread-flag?=, =log-log-slope=: known inputs (for example a series with exact slope 1 and exact slope 2, and a sample set with a known median and IQR).
+- =case-check=: a deliberately unequal pair raises and names the case; an equal pair passes. Every workload and micro-benchmark passes at the smallest size as a check that the pair computes the same result.
+- Baseline duration: the duration of =make test= is measured once on the branch before the harness is added, and recorded as a number of seconds in the Open questions of the test plan (not in this design). Constraint 5 is checked against it.
+- Constraint 5: run =make test= and confirm that no benchmark runs, no file appears in =research/data/performance-benchmark/=, and the duration does not grow measurably. Confirm that =raco test benchmark/= does not start the study.
+- Constraint 6: =make build= does not run the benchmark.
+- Constraint 1 and 2: =make benchmark= on a clean tree compiles first and runs plain =racket=.
+- =rerun-point?=, =split-positive=: known summaries (flagged, unflagged, equal to threshold) and medians (positive, zero, negative).
+- =run-study= keywords: a call with one case and a small =#:repetitions=, with =current-output-root= set to a temporary directory, writes only that case.
+- Constraint 7: =git diff= shows no change outside =benchmark/=, =makefile= and the data directory.
+- Output root: tests of =write-raw= and =write-summary= set =current-output-root= to a temporary directory and check that files appear only there.
+- Environment: the output of a dry run contains every field listed above or "unavailable"; with the parameters pointing at missing files every such entry is "unavailable".
+- Per workload: the plan's per-workload "Result compared" is the =equal?= in the case, tested through =case-check= above.
+
+* Open questions
+- Whether the spread threshold (20% of the median) is acceptable; it is a proposal, to be tuned after the pilot and recorded with the results.
+- Whether =detailed-design/architecture.org= should list =benchmark/= (see the boundary section).
+
+* Related
+- Governing document: [[file:../../research/performance-benchmark.org][performance benchmark research plan]] (accepted; there is no feature spec).
+- [[file:state-effect.org][State effect detailed design]]: the effect used by W2, W4 and W5, and the test handler the harness state handler follows.
+- [[file:queue-based-bind.org][Queue-based bind detailed design]]: the representation that U4, U5 and U9 exercise.
+- Decision [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]].
+- [[file:../architecture.org][Code architecture]].

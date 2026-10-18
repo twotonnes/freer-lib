@@ -1,0 +1,331 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-10-18
+:SPEC: ../../research/performance-benchmark.org
+:DETAILED_DESIGN: ../../detailed-design/features/performance-benchmark.org
+:END:
+#+TITLE: Performance benchmark harness: test plan
+
+Test plan for the harness in =benchmark/=; 222 cases: 213 rackunit cases in the (module+ test) block of the module that defines the procedure (the 2 module-level cases in =benchmark/run.rkt=), and 9 shell-level checks (not rackunit) in the last group. Allocation verification and errortrace detection are not planned (dropped by decision). Names below are the procedure; the test name is "<procedure>: should <expected> when <condition>".
+
+Fixture (defined once per file, in its test block):
+- Summaries are built with =(summarise '(...))= or by hand with the record fields =median=, =min=, =max=, =iqr=. A "summary with median m, iqr i" is any record with those values.
+- =fake-case id variant sizes=: a =bench-case= whose monadic and plain builders return a thunk giving n; ops is identity; equal? is =equal?=. =unequal-case= is the same with plain giving n+1. =counting-sink= is a log sink that counts and stores messages.
+- File-system cases run inside =(make-temporary-directory)= with =current-output-root= parameterized to it, delete it afterwards, and compare a snapshot of =research/data/= before and after to show the repository was untouched.
+- Log-printing code runs inside =(parameterize ([current-output-port (open-output-nowhere)]) ...)= except where silence is the thing checked.
+- "Smallest size" is 64; a pair is checked with =case-check= on a copy of the case whose sizes are cut to the first one.
+- "raises" means =exn:fail= (or a subtype) unless stated.
+
+* Cases
+** stats.rkt: summarise (R-7 quartiles)
+1. summarise: should give median 3, min 1, max 5, iqr 2 when given (1 2 3 4 5). Given the list. When summarised. Then the record has those four values (Q1 2, Q3 4).
+2. summarise: should interpolate quartiles when the count is even. Given (1 2 3 4). When summarised. Then median 2.5, min 1, max 4, iqr 1.5 (Q1 1.75, Q3 3.25).
+3. summarise: should handle two samples. Given (10 20). When summarised. Then median 15, min 10, max 20, iqr 5.
+4. summarise: should return the value for every field and iqr 0 when given one sample. Given (7). When summarised. Then median 7, min 7, max 7, iqr 0.
+5. summarise: should sort and not mutate the input when the samples are unordered. Given (5 1 4 2 3) kept as a value. When summarised. Then same record as case 1; the original list is still (5 1 4 2 3).
+6. summarise: should give iqr 0 when all samples are equal. Given (4 4 4 4). When summarised. Then median 4, min 4, max 4, iqr 0.
+7. summarise: should accept inexact reals. Given (0.5 1.5 2.5 3.5). When summarised. Then median 2.0, iqr 1.5 (Q1 1.25, Q3 2.75), within 1e-9.
+8. summarise: should accept negative samples. Given (-3 -1 -2). When summarised. Then median -2, min -3, max -1, iqr 1 (samples can be negative after empty-run subtraction).
+9. summarise: should record quartile-method 'R-7 when called on any list. Given (7) and (1 2 3 4 5). When summarised. Then both records have quartile-method equal to 'R-7.
+10. summarise: should raise when given the empty list. Given '(). When summarised. Then exn:fail raised (the design defines the result for one or more samples only).
+11. summarise: should raise when a sample is not a real number. Given (1 "a" 3), and a non-list 5. When summarised. Then exn:fail raised for each.
+
+** stats.rkt: spread-flag?
+12. spread-flag?: should return #f when iqr is below 20% of the median. Given median 10, iqr 1.5. When called with the default threshold. Then #f.
+13. spread-flag?: should return #t when iqr exceeds 20% of the median. Given median 10, iqr 2.5. When called. Then #t.
+14. spread-flag?: should return #f when iqr equals the threshold times the median. Given median 10, iqr 2. When called. Then #f (strict comparison).
+15. spread-flag?: should use the given threshold when one is passed. Given median 10, iqr 4. When called with default, then with threshold 0.5. Then #t, then #f.
+16. spread-flag?: should return #f when median and iqr are both 0. Given median 0, iqr 0. When called. Then #f.
+17. spread-flag?: should return #t when the median is 0 and iqr is positive. Given median 0, iqr 1. When called. Then #t.
+18. spread-flag?: should flag any positive iqr when the threshold is 0. Given median 10. When called with threshold 0 and iqr 0, then iqr 0.1. Then #f, then #t.
+
+** stats.rkt: log-log-slope
+19. log-log-slope: should give slope 1 when time grows linearly. Given ns (64 128 256 512), times the same values. When called with defaults. Then slope 1.0 within 1e-9; range (64 . 512).
+20. log-log-slope: should give slope 2 when time grows with n squared. Given same ns, times (4096 16384 65536 262144). When called. Then slope 2.0.
+21. log-log-slope: should give slope 0 when times are constant. Given same ns, times (5 5 5 5). When called. Then slope 0.0.
+22. log-log-slope: should give 1.5 when ns are not powers of two. Given ns (10 100 1000), times (31.6227766 1000 31622.7766). When called. Then slope 1.5 within 1e-6.
+23. log-log-slope: should fit only the given range when #:range is a pair. Given ns (64 128 256 512), times (1000 2 4 8). When called with #:range (cons 128 512). Then slope 1.0; range (128 . 512).
+24. log-log-slope: should fit the whole series when #:range is #f. Given the data of case 23. When called with #:range #f. Then slope differs from 1.0; range (64 . 512).
+25. log-log-slope: should fit the upper half when called on it. Given ns (64 128 256 512), times (1 2 8 32). When called with #:range (cons 256 512). Then slope 2.0 and the whole-series slope is not 2.0.
+26. log-log-slope: should accept exactly two points. Given ns (64 128), times (3 6). When called. Then slope 1.0; range (64 . 128).
+27. log-log-slope: should accept inexact times. Given ns (64 128 256 512), times (0.001 0.002 0.004 0.008). When called. Then slope 1.0 within 1e-9.
+28. log-log-slope: should raise when given one point. Given ns (64), times (5). When called. Then exn:fail.
+29. log-log-slope: should raise when given no points. Given '() and '(). When called. Then exn:fail.
+30. log-log-slope: should raise when the range holds one point. Given ns (64 128 256), times (1 2 4), range (cons 256 256). When called. Then exn:fail.
+31. log-log-slope: should raise when a time is zero. Given times (1 0 4) with ns (64 128 256). When called. Then exn:fail.
+32. log-log-slope: should raise when a time is negative. Given times (1 -2 4). When called. Then exn:fail.
+33. log-log-slope: should raise when ns and times differ in length. Given ns (64 128), times (1 2 4). When called. Then exn:fail.
+
+** stats.rkt: rerun-point?
+34. rerun-point?: should return #t when the summary is flagged. Given summary median 10, iqr 3. When called. Then #t.
+35. rerun-point?: should return #f when the summary is not flagged. Given summary median 10, iqr 1. When called. Then #f.
+36. rerun-point?: should return #f when iqr equals 20% of the median. Given median 10, iqr 2. When called. Then #f.
+37. rerun-point?: should return #f when median and iqr are both 0. Given median 0, iqr 0. When called. Then #f.
+38. rerun-point?: should raise when the argument is not a summary. Given 5. When called. Then exn:fail.
+
+** stats.rkt: split-positive
+Points are pairs (n . median); the procedure returns (values kept excluded), each a list of the input pairs unchanged (design, signatures).
+39. split-positive: should keep all points when every median is positive. Given ((64 . 1.5) (128 . 3)). When called. Then kept ((64 . 1.5) (128 . 3)), excluded ().
+40. split-positive: should exclude a zero median. Given ((64 . 0) (128 . 3)). When called. Then kept ((128 . 3)); excluded ((64 . 0)).
+41. split-positive: should exclude a negative median. Given ((64 . -0.5) (128 . 2) (256 . 4)). When called. Then kept ((128 . 2) (256 . 4)); excluded ((64 . -0.5)).
+42. split-positive: should exclude everything when no median is positive. Given ((64 . 0) (128 . -1)). When called. Then kept (); excluded both.
+43. split-positive: should return two empty lists when given none. Given '(). When called. Then kept (), excluded ().
+44. split-positive: should keep the original order in both lists. Given ((64 . 1) (128 . 0) (256 . 2) (512 . -1)). When called. Then kept ((64 . 1) (256 . 2)); excluded ((128 . 0) (512 . -1)).
+45. split-positive: should keep a single positive point. Given ((64 . 2)). When called. Then kept ((64 . 2)); excluded ().
+
+** case.rkt: bench-case
+46. bench-case: should hold the seven fields as given when built. Given id 'w9, variant 'left, sizes (4 8), ops, monadic, plain, equal?. When built. Then each accessor returns the value given.
+47. bench-case: should accept an empty sizes list. Given sizes '(). When built. Then sizes is '().
+48. bench-case: should not call monadic, plain or equal? when built. Given builders that count calls. When built. Then counts are 0.
+
+** case.rkt: case-check
+49. case-check: should return the number of sizes when every pair is equal. Given fake-case sizes (4 8 16). When checked. Then 3.
+50. case-check: should return 1 when there is one size. Given sizes (4). When checked. Then 1.
+51. case-check: should return 0 and call nothing when sizes is empty. Given sizes '() and counting builders. When checked. Then 0; builders called 0 times.
+52. case-check: should raise naming id, variant and n when a pair differs. Given unequal-case id 'w9, variant 'left, sizes (4 8). When checked. Then exn:fail whose message contains "w9", "left" and "4" (first size differs, n+1).
+53. case-check: should stop at the first mismatch. Given sizes (4 8 16), plain wrong at 8 and 16, with counting builders. When checked. Then exn:fail naming 8; no builder called for 16.
+54. case-check: should raise naming the last size when only the last pair differs. Given sizes (4 8 16), mismatch only at 16. When checked. Then exn:fail whose message contains "16"; sizes 4 and 8 were checked first.
+55. case-check: should use the equal? of the case. Given results 1 and 1.0 and equal? as =. When checked. Then returns 1 (equal?); with equal? as equal?, raises.
+56. case-check: should build and run each thunk once per size. Given counters in builders and thunks, sizes (4 8 16). When checked. Then each builder 3 calls, each thunk 3 calls.
+57. case-check: should pass the monadic result first and the plain result second to equal?. Given an equal? that records its arguments, monadic gives 'm and plain gives 'p. When checked on one size. Then recorded ('m 'p).
+58. case-check: should raise, not return a count, when the first of several sizes differs. Given mismatch at size 4 of (4 8). When checked. Then exn:fail; no value returned.
+
+** workloads.rkt: W1 request pipeline
+59. w1-inputs: should give n requests and the configuration, deterministically. Given n 64. When called twice. Then 64 requests, equal? results, a configuration with limit, mode and label.
+60. w1-inputs: should make about one request in eight invalid. Given n 1024. When counting invalid requests. Then count between 96 and 160.
+61. w1-inputs: should give no requests when n is 0 and one when n is 1. Given n 0, n 1. When called. Then length 0, length 1.
+62. w1-monadic: should not call the log sink when only built. Given counting-sink, n 64. When built, not run. Then 0 calls.
+63. w1-monadic: should call the log sink once per request when run. Given counting-sink, n 64, run with bench-handler. When run. Then 64 calls.
+64. w1-plain: should call the log sink once per request. Given counting-sink, n 64. When run. Then 64 calls.
+65. w1: should give equal responses and per-level log counts when monadic and plain run at the smallest size. Given w1-case cut to size 64. When case-check. Then returns 1.
+66. w1: should answer invalid requests with an error response and not abort when failures occur. Given n 64 (at least one invalid). When the monadic version runs. Then 64 responses; error responses equal the invalid count (> 0).
+67. w1: should give empty responses and no log calls when n is 0. Given n 0, both versions with counting-sink. When run. Then responses '() and 0 calls, results equal.
+68. w1-case: should return one bench-case with id 'w1, sizes from 64 to 131072 in powers of two, and ops n. Given no argument. When called. Then a list of 1; ids, sizes and (ops 64) = 64.
+69. w1-monadic: should write nothing to the output port when no sink is given. Given default sink. When run at n 64 with current-output-port captured. Then captured output is empty.
+
+** workloads.rkt: W2 ledger
+70. w2-inputs: should give 16 accounts and n transactions deterministically. Given n 64. When called twice. Then 16 accounts, 64 transactions, equal? results; every source and target is one of the accounts.
+71. w2-inputs: should give no transactions when n is 0. Given n 0. When called. Then 16 accounts, '().
+72. w2: should give equal final ledger and rejected count when monadic, plain-box and plain-threaded run at the smallest size. Given w2-case variants cut to size 64. When case-check on each. Then 1 for each; the three results agree.
+73. w2: should reject about one transaction in twenty. Given n 1024. When plain-box runs. Then rejected count between 25 and 80.
+74. w2: should keep the sum of balances when transactions are applied. Given n 256. When each version runs. Then the final total equals the opening total.
+75. w2-monadic: should give equal results when the same thunk runs twice. Given thunk for n 64. When called twice. Then equal? (a fresh store each run).
+76. w2: should return the opening ledger and 0 rejected when n is 0. Given n 0. When each version runs. Then opening ledger, 0.
+77. w2-case: should return two bench-cases with variants 'box and 'threaded. Given no argument. When called. Then ids both 'w2; variants ('box 'threaded); ops n.
+78. w2-monadic: should log once per rejected transaction and once per 64 transactions. Given counting-sink, n 128 with r rejections. When run. Then r + 2 calls.
+
+** workloads.rkt: W3 parser
+79. w3-inputs: should give a text of exactly n characters. Given n 64 and n 100. When called. Then (string-length text) 64 and 100.
+80. w3-inputs: should be deterministic. Given n 1024. When called twice. Then equal? texts.
+81. w3-inputs: should give lengths 1 and 0 when n is 1 and 0. Given n 1, n 0. When called. Then lengths 1 and 0.
+82. w3-inputs: should contain numbers, identifiers, parentheses and operators. Given n 1024. When scanned. Then each class appears.
+83. w3-inputs: should keep nesting depth bounded when n is large. Given n 16384. When maximum parenthesis depth is measured. Then at most w3-max-depth, and w3-max-depth is 64.
+84. w3: should give an equal parse tree and backtrack count when monadic and plain run at the smallest size. Given w3-case cut to 64. When case-check. Then 1.
+85. w3: should backtrack in both versions when the text has shared prefixes. Given n 1024. When both run. Then backtrack count > 0 and equal.
+86. w3: should give equal results without raising when n is 1 and 0. Given n 1, n 0. When both run. Then equal? results, no exception.
+87. w3-case: should return one bench-case with id 'w3 and sizes from 64 to 131072. Given no argument. When called. Then a list of 1.
+
+** workloads.rkt: W4 tree traversal
+88. w4-inputs: should round n to the nearest 2^k - 1 for the complete tree. Given n 100, 64, 127, 1. When built. Then 127, 63, 127, 1 nodes.
+89. w4-inputs: should give a right-shaped list of exactly n nodes for the degenerate tree. Given n 64. When built. Then 64 nodes, each with only a right subtree.
+90. w4-inputs: should give integer labels deterministically. Given n 63. When built twice. Then equal? trees; labels exact integers.
+91. w4: should give equal total, visit counter and log count when monadic and plain run on both variants at the smallest size. Given w4-case cut to 64 for 'complete and 'degenerate. When case-check. Then 1 each.
+92. w4: should count one visit per node and total equal to the label sum. Given the complete tree of 63. When the plain version runs. Then counter 63; total equals the sum of labels.
+93. w4: should give ops equal to the actual node count when n is rounded. Given the complete case. When (ops 100) is read. Then 127.
+94. w4-case: should return two bench-cases with variants 'complete and 'degenerate. Given no argument. When called. Then ids 'w4; both variants present.
+95. w4-monadic: should finish without error when the degenerate tree has 16384 nodes. Given n 16384. When run. Then the result equals the plain result.
+96. w4: should make exactly one log call per node in both versions when the sink counts. Given counting-sink, complete tree n 15 (15 nodes) and degenerate n 15. When both versions run on each. Then the log count equals the node count (15) in each, and the counts are equal between versions.
+
+** workloads.rkt: W5 Monte Carlo
+97. w5-plain: should give the same count when run twice. Given n 64. When the thunk runs twice. Then equal counts (seed fixed).
+98. w5: should give equal counts when monadic and plain run at the smallest size. Given w5-case cut to 64. When case-check. Then 1.
+99. w5: should give a count in [0, n] and near pi/4 of n when n is large. Given n 1024. When run. Then count between 700 and 870.
+100. w5-monadic: should give the same count when its thunk runs twice. Given thunk. When run twice. Then equal (generator created inside the thunk).
+101. w5: should give count 0 when n is 0 and 0 or 1 when n is 1, equal in both versions. Given n 0, n 1. When both run. Then equal counts in range.
+102. w5-case: should return one bench-case with id 'w5 and ops n. Given no argument. When called. Then a list of 1; (ops 64) = 64.
+
+** micro.rkt: U1 to U9
+103. u1-case: should return one case with id 'u1, ops n, and equal results at the smallest size. Given no argument. When case-check on size 64. Then 1.
+104. u1-case: should give equal results when the chain has 1 bind. Given size 1. When both thunks run. Then equal.
+105. u2-case: should give equal results at the smallest size and one case. Given no argument. When case-check on 64. Then 1; id 'u2.
+106. u2-case: should behave as factor 1 when no factor is given. Given (u2-case) and (u2-case 1). When ops at 64 and results compared. Then equal.
+107. u2-case: should scale ops by the batch factor when one is given. Given (u2-case 5). When (ops 64) compared with factor 1. Then five times larger; results equal.
+108. u3-case: should give equal results and ops n at the smallest size. Given no argument. When case-check on 64. Then 1.
+109. u4-case: should return variants 'left and 'right, each equal at the smallest size. Given no argument. When case-check on each. Then 1 each; ops n.
+110. u5-case: should return variants 'non-tail and 'tail, each equal, and finish at depth 4096. Given no argument. When both variants run at 4096. Then no error; results equal.
+111. u6-case: should return variants 'sequence and 'map-m, each equal at the smallest size and with one element. Given no argument. When case-check on 64 and on size 1. Then 1 each.
+112. u7-case: should return variants for k 1, 2, 4 and 8, each equal. Given no argument. When case-check on each. Then four variants pass.
+113. u8-case: should return a no-failure variant and a failure-at-depth variant, each equal. Given no argument. When case-check on each. Then pass; failure variant result equals the with-handlers result.
+114. u8-case: should catch the failure at depth 1 and at a deeper depth. Given d 1 and d 8. When run. Then the failure was caught, equal to plain.
+115. u9-case: should give equal results at the smallest size and one variant. Given no argument. When case-check on 64. Then 1; ops counts n resumes.
+116. u1-case to u9-case: should return a non-empty list of bench-cases with the right id, ascending positive sizes, positive ops and thunk builders. Given each uN-case. When inspected. Then ids 'u1 to 'u9; sizes ascending natural numbers; (ops n) positive for each size; builders return thunks of arity 0.
+117. u1-case to u9-case: should do no I/O when only built. Given current-output-port captured and the data directory snapshotted. When each is called. Then no output, no new file, no thunk called.
+
+** handlers.rkt
+118. bench-handler: should answer read-env with the configured value. Given effects (env), config holding limit 10. When a read-env of limit is run. Then 10.
+119. bench-handler: should send log messages to the sink. Given effects (log), counting-sink. When one log call is run. Then the sink got 1 message, the same as given.
+120. bench-handler: should answer rnd from a seeded generator. Given effects (rnd) built twice with the same seed. When two draws are run for each. Then both runs give the same two numbers.
+121. bench-handler: should produce the library failure when a failure description is performed. Given effects (failure). When failure runs inside try and catch. Then the catch branch runs and the continuation of the failed step does not.
+122. bench-handler: should read and write the store when effects include state. Given effects (state), store seeded ((a . 1)). When read a, then write a 5. Then read gave 1; store holds ((a . 5)).
+123. bench-handler: should raise naming the description when it is not in the effect list. Given effects (env). When a log description is run. Then exn:fail naming it.
+124. bench-handler: should raise naming the description when the description is unknown. Given a description of a plain struct. When run. Then exn:fail naming it.
+125. bench-handler: should not let try catch an unknown description. Given the unknown description inside try. When run. Then the exn:fail propagates; it is not a failure value.
+126. bench-handler: should discard log messages when no sink is given. Given effects (log), no sink. When a log call runs with current-output-port captured. Then no output, no exception.
+127. bench-handler: should return a procedure of two arguments. Given effects (env). When built. Then (procedure-arity-includes? h 2) is true.
+128. bench-handler: should raise on any description when the effect list is empty. Given effects '(). When an env description runs. Then exn:fail.
+129. state-handler: should answer read-state with the stored value. Given store ((a . 1)). When read a. Then 1.
+130. state-handler: should make a later read return a written value. Given store ((a . 1)). When write a 2, then read a. Then 2; store ((a . 2)).
+131. state-handler: should raise when the key is missing. Given empty store. When read a. Then exn:fail.
+132. state-handler: should raise naming an unknown description and not be caught by try. Given a plain-struct description inside try. When run. Then exn:fail naming it.
+133. state-handler: should behave as the state-effect test handler for update-state. Given store ((a . 1) (b . 10)). When (update-state 'a add1) runs. Then result and store equal the test handler's: store ((a . 2) (b . 10)).
+134. null-log-sink: should write nothing and return when given a message. Given message "x". When called with output and error ports captured. Then no output; no exception.
+135. null-log-sink: should accept any value. Given "", #f, 'sym, a list. When called with each. Then no exception.
+
+** measure.rkt
+136. time-run: should return a positive exact integer. Given a no-op thunk, ops-per-call 1. When called. Then exact-positive-integer.
+137. time-run: should return more than 1 when the thunk is much shorter than 1 ms. Given a no-op thunk. When called. Then factor at least 2.
+138. time-run: should return 1 when one call already takes over 1 ms. Given a thunk sleeping 10 ms. When called. Then 1.
+139. time-run: should propagate an exception raised by the thunk. Given a raising thunk. When called. Then that exception.
+140. measure-point: should return lists of 9 times, bytes and GC values when #:repetitions is 9. Given a no-op thunk, ops 1. When called. Then three lists of length 9.
+141. measure-point: should record ops and batch factor 1. Given ops 7. When called. Then ops 7; batch factor 1.
+142. measure-point: should call the thunk 3 warm-up times plus r timed times. Given a counting thunk, r 9. When called. Then 12 calls.
+143. measure-point: should return lists of one when #:repetitions is 1. Given r 1. When called. Then lists of length 1; thunk called 4 times.
+144. measure-point: should record times that reflect the work. Given a thunk sleeping 20 ms, r 3. When called. Then each time at least 15 (milliseconds).
+145. measure-point: should record more bytes for an allocating thunk than a no-op thunk. Given (make-vector 100000 0) thunk and a no-op. When both measured, r 5. Then median bytes of the first is larger (relative claim only).
+146. measure-point: should record real numbers in every list. Given a no-op thunk. When called. Then every time, byte and GC value is real?.
+147. measure-point: should raise and call nothing when #:repetitions is 0. Given counting thunk, r 0. When called. Then exn:fail; 0 calls.
+148. measure-point: should raise when #:repetitions is negative or not an integer. Given r -1 and r 2.5. When called. Then exn:fail each.
+149. measure-point: should propagate an exception raised by the thunk. Given a raising thunk. When called. Then that exception.
+150. empty-run-cost: should return real time, bytes and GC values that are small. Given nothing. When called. Then all real; time under 5 ms.
+151. measure-point: should subtract the empty-run cost when the thunk does nothing. Given a no-op thunk, r 15. When summarised. Then the median time is within 0.5 ms of 0.
+
+** environment.rkt
+Keys are those of the design's environment table: racket-version, vm, cpu-model, core-count, memory, os, load-start, load-end, governor, power-source. Every key is always present; an unreadable source gives the string "unavailable".
+152. record-environment: should return an association list with every listed key once. Given default parameters. When called. Then all ten keys, no duplicates, no key omitted.
+153. record-environment: should report the racket version and the VM. Given defaults. When called. Then racket-version equals the output of racket --version; vm equals (system-type 'vm).
+154. record-environment: should read model and core count from a cpuinfo file. Given a file with two processors and "model name : Test CPU". When called with current-cpuinfo-path set to it. Then cpu-model "Test CPU"; core-count 2.
+155. record-environment: should read memory from a meminfo file. Given a file "MemTotal: 2048 kB". When called. Then memory contains "2048".
+156. record-environment: should read load-start and load-end from a loadavg file. Given "0.10 0.20 0.30 1/100 999". When called. Then load-start and load-end are strings containing "0.10".
+157. record-environment: should read the operating system from the uname command. Given a command printing "TestOS 1.0". When called. Then os is "TestOS 1.0".
+158. record-environment: should say unavailable when the racket command is missing. Given current-racket-command pointing at a missing program. When called. Then racket-version "unavailable"; vm still present; no exception.
+159. record-environment: should say unavailable for model and core count when the cpuinfo file is missing. Given a missing path. When called. Then cpu-model and core-count "unavailable"; the others unaffected.
+160. record-environment: should say unavailable for memory when the meminfo file is missing. Given a missing path. When called. Then memory "unavailable".
+161. record-environment: should say unavailable for both load entries when the loadavg file is missing. Given a missing path. When called. Then load-start and load-end "unavailable".
+162. record-environment: should say unavailable for the OS when the uname command is missing. Given a missing program. When called. Then os "unavailable".
+163. record-environment: should say unavailable for governor and power source when the power directory is missing, and for power source alone when it has no power_supply subdirectory. Given (a) a missing directory, (b) a fixture directory holding cpufreq/policy0/scaling_governor with "powersave" and no power_supply. When called with current-power-dir set to each. Then (a) governor and power-source "unavailable"; (b) governor "powersave", power-source "unavailable".
+164. record-environment: should say unavailable for every entry except vm when all six parameters point at missing things. Given all six parameterized. When called. Then same key set as case 152; only vm is not "unavailable"; no exception.
+165. record-environment: should say unavailable when the cpuinfo file is empty. Given an empty file. When called. Then cpu-model and core-count "unavailable".
+166. record-environment: should give core count but unavailable model when cpuinfo has no "model name" line. Given four "processor : N" lines only. When called. Then core-count 4; cpu-model "unavailable".
+167. record-environment: should read governor and power source from the power directory and change no file. Given a fixture directory with cpufreq/policy0/scaling_governor containing "powersave" and a power_supply/BAT0 subdirectory. When called with current-power-dir set to it. Then governor "powersave"; power-source a string that is not "unavailable"; contents and listing of the fixture unchanged.
+168. record-environment parameters: should default to racket, /proc/cpuinfo, /proc/meminfo, /proc/loadavg and uname, and hold a path for the power directory. Given no parameterize. When the six parameters are read. Then the first five hold those values; current-power-dir holds a path or string (its value is an implementation detail).
+169. record-environment: should return strings or numbers only. Given defaults. When called. Then every value is a string or number.
+
+** report.rkt: render-summary
+Fixture: a case result (fields id, variant, sizes, monadic, plain, flags, excluded, failure, as in the design's field table) for id 'w9, variant 'left, sizes (64 128), monadic medians 20 and 30, plain 10 and 10, flags all unflagged and not re-run, excluded '(), failure #f.
+170. render-summary: should return a string. Given one case result. When rendered. Then string?.
+171. render-summary: should show the case id and variant. Given the fixture. When rendered. Then the text contains "w9" and "left".
+172. render-summary: should show the overhead ratio at each n. Given the fixture. When rendered. Then ratios 2.0 at 64 and 3.0 at 128 appear.
+173. render-summary: should show median, min, max and iqr for both versions at each n. Given summaries with distinct values. When rendered. Then each value appears.
+174. render-summary: should show bytes per operation and GC share. Given bytes median 4000, ops 100, GC 2 ms of 10 ms wall. When rendered. Then 40 bytes per operation and 0.2 appear.
+175. render-summary: should mark a flagged point only and show whether it was re-run. Given the flags field with n 64 flagged and re-run, n 128 not flagged. When rendered. Then the flag marker and the re-run mark appear for 64 only.
+176. render-summary: should show slope with range for monadic and plain, whole series and upper half. Given four sizes. When rendered. Then four slopes, each with its range.
+177. render-summary: should list excluded points and not raise when a median is not positive. Given plain median 0 at n 64 and excluded field (64). When rendered. Then the text names n 64 as excluded; no exception.
+178. render-summary: should show a failed case-check naming id, variant and n. Given a case result whose failure field is the check failure ('w9, 'left, n 8). When rendered. Then the text contains all three.
+179. render-summary: should return a string without cases when given the empty list. Given '(). When rendered. Then a string, no exception.
+180. render-summary: should keep the order of the cases. Given two results 'a then 'b. When rendered. Then "a" appears before "b".
+181. render-summary: should be pure and give equal strings when called twice. Given the fixture, a temporary root absent. When rendered twice. Then equal; no file or directory created.
+182. render-summary: should state the spread threshold and quartile method. Given the fixture. When rendered. Then the text contains "0.2" and "R-7".
+
+** report.rkt: current-output-root, write-raw, write-summary
+183. current-output-root: should default to the absolute research/data/performance-benchmark/ path. Given no parameterize. When read. Then absolute path ending in research/data/performance-benchmark/.
+184. current-output-root: should not depend on the working directory. Given the default. When read with current-directory set to a temporary directory. Then the same path as case 183.
+185. current-output-root: should hold the given value inside parameterize and restore the default after. Given a temporary path. When read inside and after parameterize. Then the temporary path, then the default.
+186. write-raw: should write raw-w9-left.rktd with one readable record per version and n. Given a case result and the temporary root. When written and read back with read. Then records with samples, ops and batch factor for each (version, n).
+187. write-raw: should store the environment in the file. Given an environment alist. When written. Then the file holds that alist.
+188. write-raw: should create the root and its parents when missing. Given a root two levels deep that does not exist. When written. Then the file exists below it.
+189. write-raw: should write only the one file below the root. Given the temporary root. When written. Then the tree holds exactly that file; the snapshot of research/data/ is unchanged.
+190. write-raw: should write one file per variant. Given variants 'left and 'right. When both written. Then raw-w9-left.rktd and raw-w9-right.rktd exist.
+191. write-raw: should replace the file when the case is written again. Given an existing file. When written with different data. Then the file holds only the new data.
+192. write-raw: should raise a filesystem error when the root is a regular file. Given the root is a file. When written. Then exn:fail:filesystem.
+193. write-summary: should write summary.org equal to render-summary of the same results. Given results and the temporary root. When written. Then file content equals the rendered string.
+194. write-summary: should write environment.rktd as a readable alist. Given an environment alist. When written and read. Then equal to the given alist.
+195. write-summary: should create the root and write only summary.org and environment.rktd. Given a missing root. When written. Then exactly those two files; snapshot of research/data/ unchanged.
+196. write-summary: should write a summary file when the results list is empty. Given '(). When written. Then summary.org exists with the empty rendering.
+197. write-summary: should raise a filesystem error when the root is a regular file. Given the root is a file. When written. Then exn:fail:filesystem.
+
+** run.rkt: run-study and case-by-id
+Fixture cases use sizes (4 8) so each run is quick; the root is a temporary directory.
+198. run-study: should accept #:cases and #:repetitions as optional keywords. Given run-study. When procedure-keywords is read. Then both keywords are accepted and neither is required.
+199. run-study: should write raw-<id>-<variant>.rktd, summary.org and environment.rktd when given one case and #:repetitions 3. Given fake-case 'a 'v. When run. Then those three files; each point holds 3 samples when no point is flagged, else 3 or 6 (checked against the result's flags, not against timing).
+200. run-study: should write a file per case when given two cases. Given 'a 'v and 'b 'v. When run. Then both raw files and summary.org.
+201. run-study: should write only the cases it is given. Given two cases defined, one passed. When run. Then one raw file only.
+202. run-study: should write the header-only summary.org and environment.rktd and no raw file when #:cases is empty. Given '(). When run. Then summary.org holds the header only (equal to the rendering of '()), environment.rktd exists, no raw file; no exception.
+203. run-study: should use 15 repetitions when #:repetitions is omitted. Given a quick fake case. When run. Then each point holds 15 samples when no point is flagged, else 15 or 30 (checked against the result's flags).
+204. run-study: should re-run a flagged point with doubled repetitions and keep the flag. Given a thunk alternating 1 ms and 30 ms sleeps, r 3. When run. Then 6 samples recorded and the flag set in the output.
+205. (removed) run-study: not re-run when not flagged. Removed because it depended on wall-clock noise (a fixed sleep can be flagged on a busy machine); the rule is covered deterministically by cases 35-37 (rerun-point? #f), 199 and 203 (sample count equals r when no point is flagged), and 175 (re-run mark only on flagged points). run-study has no injected measure seam.
+206. run-study: should void a case whose check fails and still run the others. Given unequal-case and a good case. When run. Then no raw file for the first; summary.org names its id, variant and n; the good case is written; no exception.
+207. run-study: should leave finished cases complete and the rest unwritten when a case raises. Given good case 'a, a case whose thunk raises, good case 'c. When run. Then the exception propagates; raw file of 'a exists and is readable; none for the raising case or 'c.
+208. run-study: should raise when #:repetitions is below 1. Given r 0 and r -1. When run. Then exn:fail each; no file written.
+209. run-study: should write nothing outside the output root. Given a temporary root. When run. Then snapshot of research/data/ unchanged.
+210. run-study: should record a batch factor from time-run. Given a no-op fake case. When run. Then the raw record's batch factor is at least 2.
+211. case-by-id: should raise exn:fail when the id is unknown. Given "nope" and 'nope. When (case-by-id id) is called. Then exn:fail for each.
+212. case-by-id: should return the bench-cases of the id, as symbol or string, or all cases when no argument is given. Given 'w3, "w3", 'w4 and no argument. When called. Then 'w3 and "w3" give equal lists of w3 variants only; 'w4 gives both w4 variants; no argument gives all cases (w1 to w5 and u1 to u9 variants).
+
+
+Changes after acceptance: 199 and 203 rewritten to be timing-independent (accept r or 2r only when a flag is set, exactly r otherwise); 205 removed (see its entry). Totals: 222 cases, 213 rackunit.
+
+** Module level (in benchmark/run.rkt test block)
+213. requiring a benchmark module: should do nothing when required. Given case, stats, workloads, micro, handlers, measure, environment, report. When each is dynamic-required in a fresh namespace with output captured. Then no output, no new file under research/data/.
+214. requiring run.rkt: should not start the study when required. Given benchmark/run.rkt. When dynamic-required with output captured. Then no output; research/data/performance-benchmark/ not created.
+
+** Shell-level checks (not rackunit; run once, by hand or script)
+215. make test: should pass, run no benchmark and write no file. Given a clean tree. When =make test > /tmp/freer-test.log=. Then exit 0; no benchmark result text in the log; research/data/performance-benchmark/ absent; duration compared with the baseline figure in Open questions.
+216. make build: should not run the benchmark. Given a clean tree. When =make build=. Then exit 0; no file in research/data/.
+217. raco test benchmark/: should run only the tests. Given benchmark/. When run. Then exit 0; no study output; no data written.
+218. make -n benchmark: should show raco make benchmark/run.rkt before racket benchmark/run.rkt. Given the makefile. When =make -n benchmark=. Then the two commands in that order; no errortrace flag.
+219. make -n benchmark CASE=w3: should pass w3 to the program. Given the makefile. When =make -n benchmark CASE=w3=. Then the racket command line ends with w3.
+220. makefile: should not make benchmark a prerequisite of test, build, compile, install or docs. Given the makefile. When =make -n= is run for each target. Then no output mentions benchmark.
+221. git diff: should show no change outside benchmark/, makefile, research/data/ and the documents. Given the branch. When =git diff --name-only main=. Then every path is under benchmark/, research/, detailed-design/, test-plan/ or is makefile; none is main.rkt, try-catch.rkt, info.rkt or under effects/.
+222. smoke run (approved): should write the w3 files when run for one case. Given a clean benchmark/compiled. When =make benchmark CASE=w3=. Then exit 0; raw-w3-*.rktd, summary.org and environment.rktd exist under research/data/performance-benchmark/; the summary names only w3.
+223. make benchmark: should run from compiled code. Given case 222 done. When benchmark/compiled/ is listed. Then run_rkt.zo exists and is not older than run.rkt.
+
+* Coverage
+| Plan item                                          | Cases |
+|----------------------------------------------------+-------|
+| W1 workload (inputs, effects, results compared)    | 59-69 |
+| W2 workload (both plain variants)                  | 70-78 |
+| W3 workload                                        | 79-87 |
+| W4 workload (complete and degenerate)              | 88-96 |
+| W5 workload (same sequence)                        | 97-102 |
+| U1 to U9 micro-benchmarks                          | 103-117 (U1 103-104, U2 105-107, U3 108, U4 109, U5 110, U6 111, U7 112, U8 113-114, U9 115) |
+| Metric: wall time per operation, median and spread | 1-11, 140-144, 151 |
+| Metric: allocated bytes per operation              | 145-146, 150, 174 |
+| Metric: GC time share                              | 146, 174 |
+| Metric: scaling exponent and fit range             | 19-33, 39-45, 176-177 |
+| Metric: overhead ratio                             | 172 |
+| Procedure: warm-up 3, repetitions, GC before run   | 142-143, 147-148, 199, 203 |
+| Procedure: batching to reach 1 ms                  | 107, 136-138, 210 |
+| Procedure: flag and re-run of noisy points         | 12-18, 34-38, 175, 199, 203-204 |
+| Procedure: environment recorded                    | 152-169, 187, 194 |
+| Procedure: entry point, one case or all            | 198-202, 211-212, 219 |
+| Constraint 1 no errortrace                         | not checked (decision); 218 shows no instrumenting flag |
+| Constraint 2 compiled                              | 218, 223 |
+| Constraint 3 equal results first                   | 49-58, 65, 72, 84, 91, 98, 103-115, 206 |
+| Constraint 4 output location                       | 183-197, 209 |
+| Constraint 5 kept out of make test                 | 213-217 |
+| Constraint 6 not part of build                     | 216, 220 |
+| Constraint 7 no library change                     | 221 |
+| Handlers, sinks, state handler                     | 118-135 |
+| Reliability: small n, no partial output on stop    | 136-138, 207 |
+
+* Open questions
+1. (resolved) measure-point with #:repetitions 0, negative or non-integer: the design is silent (it states the rule for run-study only); cases 147-148 assume exn:fail. Resolved: the user confirmed exn:fail for repetitions below 1 or not an integer.
+2. (resolved) Baseline make test duration (before the harness is added): 116 s wall time, 228 tests passing, measured on the branch performance-benchmark on 2026-10-18.
+3. (accepted) Accepted gaps (user decision):
+   - (a) run-study's doubled re-run on a flagged point is not covered by a deterministic test, because run-study has no measurement seam; the pure rerun-point? cases cover the decision.
+   - (b) Case 204 depends on sleep timing to produce a flagged point.
+   - (c) Cases 199 and 203 accept either count (r or 2r), because the count depends on flagging, which they no longer assert.
+
+* Related
+- [[file:../../research/performance-benchmark.org][Performance benchmark research plan]]
+- [[file:../../detailed-design/features/performance-benchmark.org][Performance benchmark detailed design]]

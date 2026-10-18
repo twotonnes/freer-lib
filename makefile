@@ -1,4 +1,4 @@
-.PHONY: compile test install docs clean build
+.PHONY: compile test install docs clean build benchmark
 
 compile:
 	raco make -j 8 main.rkt
@@ -16,3 +16,7 @@ clean:
 	find . -type f -wholename "*/compiled/*" -delete
 
 build: clean test compile docs
+
+benchmark:
+	raco make benchmark/run.rkt
+	racket benchmark/run.rkt $(CASE)

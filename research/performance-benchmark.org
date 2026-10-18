@@ -1,0 +1,339 @@
+:PROPERTIES:
+:DATE: 2026-10-18
+:STATUS: accepted
+:END:
+#+TITLE: Performance benchmark of freer-lib: research plan
+
+*This document is a plan. No measurement has been made for it yet.* Every number that
+appears below is either quoted from another document of this repository (and says so) or
+is a hypothesis. Findings, scenario effects, and the recommendation are filled in only
+after the harness is built and the study has run, in a later revision.
+
+* Question
+How does monadic code written with freer-lib perform against ordinary Racket code that
+does the same work, on a range of use cases, and which coding patterns change that
+performance, and by how much? The outcome is a guide of the form "doing X affects
+performance like so", plus a list of improvements to the library worth trying.
+
+* Summary
+Not available yet; nothing has been measured. The plan is:
+- Five synthetic workloads (W1 to W5), each representative of a kind of real-world
+  program, each with a plain-Racket counterpart and a size parameter n. They give the
+  headline result.
+- Nine micro-benchmarks (U1 to U9), each isolating one cost of the library.
+- Four metrics: median wall time per operation, allocated bytes per operation (required),
+  GC time share, and the scaling exponent from a log-log fit. The overhead ratio
+  (monadic over plain) is reported at each n.
+- A fixed, repeatable method run from one make target, kept out of =make test= and
+  =make build=.
+- A set of candidate improvements (hypotheses), tried only on scratch copies.
+- Seven earlier decisions are recorded as resolved (Q1 to Q7). One question remains open
+  (N2; N1 is resolved).
+- The state effect is implemented, so all five workloads can be built. The harness is
+  covered by a [[file:../detailed-design/features/performance-benchmark.org][detailed design]].
+
+* Method (plan; nothing run yet)
+** Reference platform
+The reference platform is the Racket installed on the machine the study runs on, which
+targets Chez Scheme (Racket CS). No version number is fixed in this plan. Every result
+records the exact output of =racket --version= and the VM in use, together with the
+machine description (see Procedure). The Intel Core i7-8565U that produced the earlier
+figures quoted from the detailed design is noted only as the machine those figures came
+from; it is not the reference machine unless the study happens to run on it.
+
+** Library surface to benchmark
+Verified against the code inventory:
+- Core: =perform=, =return= (and its alias =pure=), =>>= (the exported name of =bind=),
+  =do-m= with =<-=, =sequence=, =map-m=, and =run= (the handler runner).
+- The waiting-computation structure =impure= with fields =description=, =k=, =queue=
+  (queue-based bind, implemented in 1.0.0; see the
+  [[file:../detailed-design/features/queue-based-bind.org][detailed design]]).
+- Failure: =try= and =catch= in =try-catch.rkt=, and the failure effect in
+  =effects/failure-effect.rkt=.
+- Effect modules: env (=read-env=), log (=log-dbg=, =log-inf=, =log-err=), rnd (=rnd=,
+  =do-rnd=), id (=id=).
+- State effect: implemented (spec and detailed design have STATUS implemented, 2026-10-18)
+  in =effects/state-effect.rkt=, specified in
+  [[file:../design/features/state-effect.org][state-effect]]. W2, W4, and W5, and their plain counterparts, use it. Their operations
+  are not described here; the spec defines them. The library ships no state handler; the
+  harness defines its own (see the harness detailed design).
+
+** Dependency on the state effect
+- The state-effect feature is implemented, so W2, W4, and W5 can be built now.
+- W1 and W3 and the micro-benchmarks U1 to U9 do not use the state effect. The study is
+  run as a whole, once, so that all results come from one library version and one machine
+  session.
+- If the state-effect spec changes the effect's shape, the monadic versions of W2, W4,
+  and W5 are adapted; the plain counterparts and the stated inputs and results do not
+  change.
+
+** Workloads (headline result)
+Five synthetic workloads. Each takes a size parameter n, has a monadic version and a
+plain-Racket counterpart doing the same work, and is deterministic: inputs are generated
+by fixed arithmetic rules or a fixed seed, outside the timed region. The effects used
+across the set cover env, log, rnd, state, and failure. Plain counterparts are written
+the way a Racket programmer would write them without the library (parameters or
+arguments for configuration, a mutable box or threaded loop variable for state, a direct
+call to a log sink, =with-handlers= and =raise= for failure); they are not written to
+imitate the library. Log output goes to a discarded sink in both versions.
+
+| Id | Represents | Effects | Size parameter n |
+|----+------------+---------+------------------|
+| W1 | request-handling pipeline | env, log, failure | number of requests |
+| W2 | stateful ledger or simulation | state, log | number of transactions |
+| W3 | tokenizer and parser with backtracking | env, failure | length of the input text |
+| W4 | recursive tree traversal | state, log | number of tree nodes |
+| W5 | Monte Carlo estimate | rnd, state | number of random draws |
+
+*** W1 Request-handling pipeline
+- Represents: a server-style program that reads configuration, handles a stream of
+  independent requests, logs each, and turns validation errors into error responses.
+- Inputs: a list of n requests, each a small record (identifier, a numeric field, a
+  text field), built by fixed arithmetic so that about one request in eight violates the
+  validation rule. A configuration of a few entries (limit, mode, label).
+- Effects: env (two to three configuration reads per request), log (one log call per
+  request, at a level that depends on the outcome), failure (validation failure raised
+  inside the handler of a request and caught per request, so a failure never aborts the
+  run).
+- Monadic version: one computation per request using =do-m=, with the validation failing
+  through the failure effect and =try= and =catch= around each request; the requests are
+  combined with =map-m=.
+- Plain counterpart: a loop over the requests with configuration passed as arguments,
+  validation raising an exception caught with =with-handlers=, one call to a log sink per
+  request.
+- Result compared: the list of responses and the count of log calls per level.
+
+*** W2 Stateful ledger or simulation
+- Represents: a program whose core is a state updated at every step, such as a ledger,
+  inventory, or game simulation.
+- Inputs: 16 accounts with fixed opening balances, and a list of n transactions
+  (source, target, amount) built by fixed arithmetic; about one transaction in twenty
+  would overdraw its source and is rejected.
+- Effects: state (the ledger is read and replaced at each transaction), log (one log call
+  for each rejected transaction and one summary call per 64 transactions). Rejection is an
+  ordinary branch, not a failure, so W2 isolates state from failure handling.
+- Monadic version: one =do-m= computation per transaction, sequenced over all n
+  transactions.
+- Plain counterpart: a loop whose state is held in a mutable box (and a variant with the
+  ledger threaded as a loop variable, reported separately, since the two plain styles can
+  differ), with direct calls to a log sink.
+- Result compared: the final ledger and the number of rejected transactions.
+
+*** W3 Tokenizer and parser with backtracking
+- Represents: a parser or interpreter front end that tries alternatives and backtracks on
+  failure.
+- Inputs: a text of length n characters (characters, not tokens) produced by fixed
+  rules, containing numbers, identifiers, parentheses, and operators; a small grammar
+  in which several alternatives share a prefix, so that some alternatives fail after
+  consuming input. The text is made available through env; the position is threaded
+  through the parser as an ordinary value, so W3 does not depend on the state effect.
+- Effects: env (read the input text and the grammar options), failure (an alternative
+  fails when it does not match; =try= and =catch= choose the next alternative).
+- Monadic version: recursive-descent parser whose alternatives are written with =try= and
+  =catch=; tokenizer and parser run in one pass.
+- Plain counterpart: the same recursive-descent parser with alternatives written using
+  =with-handlers= and =raise=.
+- Result compared: the parsed value (a tree) and the number of backtracks.
+- Note: backtracking depth depends on the generated text; the generator keeps nesting
+  depth bounded so that cost scales with n, not with a pathological depth.
+
+*** W4 Recursive tree traversal
+- Represents: a non-tail recursive program that visits every node of a data structure and
+  records something at each node, such as a walk over an abstract syntax tree or a file
+  tree.
+- Inputs: a complete binary tree of n nodes (n rounded to the nearest 2^k - 1) with
+  integer labels, built before timing. A second variant uses a degenerate tree (a list
+  shaped to the right) of n nodes, to show depth sensitivity, and is reported separately.
+- Effects: state (a running total and a visit counter updated at every node), log (one
+  log call per node).
+- Monadic version: recursive monadic procedure, where each node performs its state
+  update and log call before and after its subtrees (non-tail recursion).
+- Plain counterpart: the same recursion with a box for the state and a direct log call.
+- Result compared: the final total, the visit counter, and the log call count.
+
+*** W5 Monte Carlo estimate
+- Represents: a numeric or simulation program drawing from a random source and
+  accumulating a statistic.
+- Inputs: n draws of two random numbers each, from the rnd effect; a fixed seed.
+- Effects: rnd (two draws per iteration), state (the number of draws that fell inside
+  the unit circle, updated per iteration).
+- Monadic version: a loop of n iterations, each drawing two numbers and updating the
+  state; the rnd handler uses the seeded generator.
+- Plain counterpart: the same loop using the same seeded generator in the same order,
+  and a box for the count.
+- Result compared: the final count. This requires both versions to consume the same
+  random sequence; the check before timing fails if they do not.
+
+** Micro-benchmarks
+Each use case has a size parameter n, a monadic version, a plain-Racket counterpart, and
+the thing it isolates. Plain counterparts use the same logic and the same handler work,
+written directly.
+
+| Id  | Monadic version | Plain counterpart | Isolates |
+|-----+-----------------+-------------------+----------|
+| U1  | chain of n binds of =return= | =let*= of n steps | cost of bind on finished values |
+| U2  | one =perform= and =run= with one handler | one procedure call | fixed overhead per run |
+| U3  | n =perform= calls in one =do-m= block | n direct handler calls in a loop | per-effect cost, sequential |
+| U4  | left-nested and right-nested bind chains of depth n | equivalent nested calls | the case queue-based bind targets; also tests shape sensitivity |
+| U5  | recursive effectful procedure, non-tail, each call performs one effect; plus a tail-recursive variant | same recursion with direct handler calls | depth growth; scaling exponent |
+| U6  | =sequence= and =map-m= over a list of length n | =map=, =for/list= | list combinators |
+| U7  | =run= with k nested handlers, effects handled at depth k, k in a small range | direct calls through k wrapper procedures | cost of handler stacking |
+| U8  | =try= and =catch= with no failure, and with failure at depth d | =with-handlers= and =raise= | cost of the failure effect against exceptions |
+| U9  | one waiting computation resumed many times | one procedure called many times | repeated resumption (see below) |
+
+Notes per use case:
+- U1: expected to be dominated by closure allocation; hypothesis only.
+- U4: the left-nested chain is the shape that the old representation made slow. The
+  detailed design of this repository records old and new times for related shapes (for
+  example 100 000 left-nested binds on one effect: 5.62 ms old, 8.61 ms new, measured on
+  one machine on 2026-10-17). Those are quoted, not part of this study's results.
+- U5: before queue-based bind, time grew about 4.3 times per doubling of depth (quoted
+  from the queue-based-bind spec's scratch benchmark). The study measures the exponent
+  on the current code; the expected result is close to 1, a hypothesis.
+- U9: the queue-based-bind spec puts repeated resumption out of scope, and the detailed
+  design records it as the accepted limit (53 ms against 18 ms for 100 resumes at depth
+  20 000, quoted). It is measured here only to inform future work.
+
+** Metrics
+- *Wall time per operation*: median over repeated runs after warm-up, with spread
+  (min, max, and interquartile range). "Operation" is defined per use case, for example
+  one bind in U1, one effect in U3, one request in W1.
+- *Allocated bytes per operation* (required): the source is =(current-memory-use
+  'cumulative)=, the proposed counter for Racket CS, which reports the total bytes
+  allocated since start and does not decrease when memory is collected. It is read once
+  immediately before and once immediately after a timed run; the difference divided by
+  the number of operations is the result. The readings are taken outside the timed
+  region's inner loop so the counter calls do not add to the measured work, and the
+  harness subtracts the allocation of an empty timed run (the measurement overhead).
+  The counter is used as reported, with no separate verification step; see the Q2
+  decision under Open questions.
+- *GC time share*: collection time during the timed run divided by wall time, from
+  =current-gc-milliseconds=, reported when available.
+- *Scaling exponent*: slope of a least-squares fit of log time against log n over the
+  size series, with the fit range stated. Reported per use case and per variant, for
+  monadic and plain code separately.
+- *Overhead ratio*: median monadic time divided by median plain time, at each n.
+
+** Procedure
+- Size series: geometric, powers of 2, from 2^6 to 2^17 for the pilot, extended or cut
+  after the pilot to fit the time budget. W4 uses the nearest 2^k - 1 node counts.
+- Warm-up runs are discarded (3). Garbage is collected before every timed run.
+- Repetitions: at least 9 timed runs per point (15 proposed and used unless the pilot
+  shows the time budget is exceeded), reporting median, min, max, and interquartile
+  range. A point whose spread is large relative to its median is flagged and re-run, not
+  silently kept.
+- Handlers and plain code do the same work per effect, so the ratio shows library
+  overhead only.
+- Environment recorded with every result: output of =racket --version=, the VM (CS
+  expected), CPU model and core count, memory, operating system, other load at the time,
+  and power settings (frequency governor, AC or battery). Runs happen on an otherwise
+  idle machine.
+- Entry point: the harness adds a make target, proposed name =make benchmark=, to the
+  makefile when the harness is built. It runs the whole study; a second invocation form
+  runs one workload or one use case. The target is not a dependency of =make test= or
+  =make build=.
+- Reading the results: measured numbers are reported separately from inferences, with
+  machine and noise stated, as the research index requires.
+
+** Constraints for the harness
+These are checked when the harness is built, and a failing check blocks the run.
+1. No errortrace: benchmark code is never run under errortrace or any instrumenting
+   tool.
+2. Compiled: benchmark code is compiled with =raco make= and run from compiled code.
+3. Equal results first: for every use case and workload, the monadic and plain versions
+   produce equal results (as defined per workload above) at every n before either is
+   timed. A mismatch voids that use case.
+4. Output location: all raw output and summary tables go to
+   =research/data/performance-benchmark/=, and are committed there (see Q4, resolved).
+5. Kept out of =make test=: =make test= runs =raco test= over the whole tree, so benchmark
+   modules would be picked up. The benchmark modules do no work at module level: loading
+   or testing them only defines procedures, and all measurement starts from the make
+   target's entry point (or, as an alternative the harness may choose, the directory is
+   excluded from testing). The harness verifies this by running =make test= and checking
+   that no benchmark runs and no output is written, and that =make test= duration does not
+   grow measurably.
+6. Not part of the build: =make build= does not run the benchmark.
+7. No change to the library for the sake of the benchmark: the harness uses the public
+   interface of the library; scenarios are tried on scratch copies only.
+
+** Reliability limits (known in advance)
+- One machine, one Racket version: results show relative cost, not absolute.
+- Allocation counter not verified (Q2): a one-line =racket -e= check read about 17 MB for
+  about 0.1 MB of expected allocation. Absolute byte figures are not trusted without this
+  caveat; only the relative comparison between monadic and plain code is supported.
+- Small-n points are near timer resolution; the size range must keep each timed run long
+  enough to be measured (proposal: at least 1 ms), by batching operations if needed.
+- Closure allocation and GC behaviour can change the exponent at large n; the fit range
+  is reported so this can be seen.
+- The workloads are synthetic. They are chosen to resemble real programs, but they are
+  not measurements of any particular application.
+
+* Scenarios (candidate improvements; all hypotheses, to evaluate later on scratch copies)
+Nothing here is measured. Each scenario is tried only after the baseline exists, only on
+a scratch copy of the library, and only if the baseline points at the cost it targets.
+
+| Id | Direction | Cost to try | Expected gain (hypothesis) | Risk |
+|----+-----------+-------------+----------------------------+------|
+| S1 | Keep the queue representation; reduce per-bind allocation (fewer closures and queue nodes per bind) | low | lower constant factor in U3 to U6 and W1 to W5 | low; internal only |
+| S2 | Specialise binds of pure values (evaluate immediately, skip queue work) | low | U1 and chains with many pure steps | low; must keep observable order and results |
+| S3 | Macro-level fusion of =do-m= (combine adjacent binds at expansion time) | medium | U3, W1 to W5 | medium; changes expansion, harder to debug |
+| S4 | CPS or direct-style fast path inside =run= for common handlers | high | U3, U7, W1 to W5 | high; may affect the handler interface and repeated resumption |
+| S5 | Avoid closure creation in =perform= (share the resuming procedure) | low | U2, U3 | medium; the detailed design records that equality on waiting computations already changed once |
+| S6 | Store the rotated queue to make repeated resumption cheaper | medium | U9 | medium; the spec treats U9 as out of scope, so this needs a new spec |
+
+Any scenario that changes observable behaviour, the handler interface, or the shape of
+the waiting-computation structure needs a spec first and may be a breaking change under
+decision 0002.
+
+* Recommendation
+None yet; it depends on the measurements. After the study, this section will rank the
+scenarios by measured gain per cost, and state under which results a different
+choice is better (for example, if overhead ratios are already small on W1 to W5, no
+scenario is worth its risk).
+
+* Open questions
+** Resolved (decisions of the user)
+1. *Q1 Reference platform*: the Racket currently installed, targeting Chez Scheme (Racket
+   CS). No version number is hardcoded; the exact version and VM are recorded with every
+   result. The reference machine is the one the study runs on, and is recorded.
+2. *Q2 Allocation metric* (revised by the user, 2026-10-18): allocated bytes per
+   operation are required, read from =(current-memory-use 'cumulative)= before and after
+   each timed run and used as reported. The verification step is dropped by the user's
+   decision on 2026-10-18. Evidence the user should see: a one-line =racket -e= check read
+   about 17 MB for about 0.1 MB of expected allocation, so absolute byte figures are not
+   trusted without the caveat; relative comparison between monadic and plain code is the
+   claim the study can support. No fallback to live memory.
+3. *Q3 Workloads*: five synthetic workloads W1 to W5 replace the single representative
+   case; U1 to U9 stay as micro-benchmarks. The headline result is the workloads.
+4. *Q4 Raw data*: raw output is committed under =research/data/performance-benchmark/=
+   with the summary tables.
+5. *Q5 Make target*: a make target is added to the makefile when the harness is built,
+   as the entry point of the study (proposed name =make benchmark=). It is not a
+   dependency of =make test= or =make build=, and the benchmark code must not run during
+   =make test= (constraint 5 above).
+6. *Q6 State effect*: the study uses the state effect, added to the library as a new
+   feature with its own spec. That feature is now implemented, so W2, W4, and W5 can be
+   built.
+7. *Q7 Size range and time budget*: as proposed, 2^6 to 2^17 for the pilot, repetitions
+   as stated above.
+
+** Still open
+1. *N2 Title and contents of the research index*: the title of =research/index.org= and
+   its Contents entry for this plan may need changes (see the report accompanying this
+   revision). The user decides whether to change them.
+
+** Resolved after approval
+1. *N1 Broken link in the index* (resolved by the user): decision "removed index entry".
+   The =disabling-contracts.org= line is deleted from the Contents of
+   =research/index.org=.
+2. *Harness design*: the harness is covered by a detailed design,
+   [[file:../detailed-design/features/performance-benchmark.org][performance-benchmark]], written before any code. The user accepts it as the design
+   (Q5 follows it for the make target). No feature spec exists for the benchmark; this
+   plan governs it.
+
+* Related
+- [[file:../design/features/queue-based-bind.org][Queue-based bind (spec)]]: why nested binds were slow, and the scaling requirement.
+- [[file:../detailed-design/features/queue-based-bind.org][Queue-based bind (detailed design)]]: the representation, and the recorded Cost table.
+- [[file:../design/features/state-effect.org][State effect (spec, implemented)]] and its
+  [[file:../detailed-design/features/state-effect.org][detailed design]]: the effect used by W2, W4, and W5.
+- [[file:../detailed-design/features/performance-benchmark.org][Performance benchmark harness (detailed design)]].
