@@ -18,7 +18,7 @@ performance like so", plus a list of improvements to the library worth trying.
 
 * Summary
 The study ran once on one machine (Intel i7-8565U, Racket v9.3 CS, governor powersave).
-All 25 case files and the summary are in =data/performance-benchmark/=. Numbers below are
+All 25 case files and the summary are in =../data/performance-benchmark/=. Numbers below are
 overhead ratios (monadic time over plain time) at the largest size, n = 131072, unless
 stated.
 - Workloads: W1 request pipeline 2.7; W2 ledger 11.8 (box) and 11.6 (threaded); W3 parser
@@ -59,14 +59,14 @@ Verified against the code inventory:
   =do-m= with =<-=, =sequence=, =map-m=, and =run= (the handler runner).
 - The waiting-computation structure =impure= with fields =description=, =k=, =queue=
   (queue-based bind, implemented in 1.0.0; see the
-  [[file:../detailed-design/features/queue-based-bind.org][detailed design]]).
+  [[file:../../detailed-design/features/queue-based-bind.org][detailed design]]).
 - Failure: =try= and =catch= in =try-catch.rkt=, and the failure effect in
   =effects/failure-effect.rkt=.
 - Effect modules: env (=read-env=), log (=log-dbg=, =log-inf=, =log-err=), rnd (=rnd=,
   =do-rnd=), id (=id=).
 - State effect: implemented (spec and detailed design have STATUS implemented, 2026-10-18)
   in =effects/state-effect.rkt=, specified in
-  [[file:../design/features/state-effect.org][state-effect]]. W2, W4, and W5, and their plain counterparts, use it. Their operations
+  [[file:../../design/features/state-effect.org][state-effect]]. W2, W4, and W5, and their plain counterparts, use it. Their operations
   are not described here; the spec defines them. The library ships no state handler; the
   harness defines its own (see the harness detailed design).
 
@@ -559,13 +559,13 @@ compared with exceptions, on this machine.
    The =disabling-contracts.org= line is deleted from the Contents of
    =research/index.org=.
 2. *Harness design*: the harness is covered by a detailed design,
-   [[file:../detailed-design/features/performance-benchmark.org][performance-benchmark]], written before any code. The user accepts it as the design
+   [[file:../../detailed-design/features/performance-benchmark.org][performance-benchmark]], written before any code. The user accepts it as the design
    (Q5 follows it for the make target). No feature spec exists for the benchmark; this
    plan governs it.
 
 * Related
-- [[file:../design/features/queue-based-bind.org][Queue-based bind (spec)]]: why nested binds were slow, and the scaling requirement.
-- [[file:../detailed-design/features/queue-based-bind.org][Queue-based bind (detailed design)]]: the representation, and the recorded Cost table.
-- [[file:../design/features/state-effect.org][State effect (spec, implemented)]] and its
-  [[file:../detailed-design/features/state-effect.org][detailed design]]: the effect used by W2, W4, and W5.
-- [[file:../detailed-design/features/performance-benchmark.org][Performance benchmark harness (detailed design)]].
+- [[file:../../design/features/queue-based-bind.org][Queue-based bind (spec)]]: why nested binds were slow, and the scaling requirement.
+- [[file:../../detailed-design/features/queue-based-bind.org][Queue-based bind (detailed design)]]: the representation, and the recorded Cost table.
+- [[file:../../design/features/state-effect.org][State effect (spec, implemented)]] and its
+  [[file:../../detailed-design/features/state-effect.org][detailed design]]: the effect used by W2, W4, and W5.
+- [[file:../../detailed-design/features/performance-benchmark.org][Performance benchmark harness (detailed design)]].

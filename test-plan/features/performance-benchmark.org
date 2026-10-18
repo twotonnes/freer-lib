@@ -1,7 +1,7 @@
 :PROPERTIES:
 :STATUS: implemented
 :DATE: 2026-10-18
-:SPEC: ../../research/performance-benchmark.org
+:SPEC: ../../research/performance-benchmark/performance-benchmark.org
 :DETAILED_DESIGN: ../../detailed-design/features/performance-benchmark.org
 :END:
 #+TITLE: Performance benchmark harness: test plan
@@ -327,5 +327,5 @@ Changes after acceptance: 199 and 203 rewritten to be timing-independent (accept
    - (c) Cases 199 and 203 accept either count (r or 2r), because the count depends on flagging, which they no longer assert.
 
 * Related
-- [[file:../../research/performance-benchmark.org][Performance benchmark research plan]]
+- [[file:../../research/performance-benchmark/performance-benchmark.org][Performance benchmark research plan]]
 - [[file:../../detailed-design/features/performance-benchmark.org][Performance benchmark detailed design]]

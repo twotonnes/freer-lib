@@ -1,12 +1,12 @@
 :PROPERTIES:
 :STATUS: implemented
 :DATE: 2026-10-18
-:SPEC: ../../research/performance-benchmark.org
+:SPEC: ../../research/performance-benchmark/performance-benchmark.org
 :END:
 #+TITLE: Performance benchmark harness: detailed design
 
 * Summary
-How the harness of the [[file:../../research/performance-benchmark.org][performance benchmark research plan]] is built; it is implemented, ran the study once (results in [[file:../../research/performance-benchmark.org][the research document]]), and this document describes the code as it is. There is no feature spec: the accepted research plan governs scope, workloads, metrics and constraints, and this document only says which modules and procedures realise them. The harness lives in =benchmark/=, measures the library through its public interface, and changes no library code.
+How the harness of the [[file:../../research/performance-benchmark/performance-benchmark.org][performance benchmark research plan]] is built; it is implemented, ran the study once (results in [[file:../../research/performance-benchmark/performance-benchmark.org][the research document]]), and this document describes the code as it is. There is no feature spec: the accepted research plan governs scope, workloads, metrics and constraints, and this document only says which modules and procedures realise them. The harness lives in =benchmark/=, measures the library through its public interface, and changes no library code.
 
 * Modules and procedures
 Plan items are named by their section or constraint number. P = pure, I = impure (clock, GC, file system, process environment).
@@ -212,7 +212,7 @@ The plan has no acceptance criteria in the spec sense; these checks derive from 
 - Why the plain W1 point at n = 16384 is flagged although its IQR in the summary is below the threshold, and holds 15 samples in =raw-w1-default.rktd= where a re-run would give 30. Not established; see the research document.
 
 * Related
-- Governing document: [[file:../../research/performance-benchmark.org][performance benchmark research plan]] (accepted; there is no feature spec).
+- Governing document: [[file:../../research/performance-benchmark/performance-benchmark.org][performance benchmark research plan]] (accepted; there is no feature spec).
 - [[file:state-effect.org][State effect detailed design]]: the effect used by W2, W4 and W5, and the test handler the harness state handler follows.
 - [[file:queue-based-bind.org][Queue-based bind detailed design]]: the representation that U4, U5 and U9 exercise.
 - Decision [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003]].
