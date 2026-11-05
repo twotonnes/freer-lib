@@ -11,10 +11,11 @@ Freer-lib is a library for writing programs as computations that describe effect
 * Components
 - Core: computations that are finished or waiting for an effect. A waiting computation has three parts: the effect description, a way to resume it, and a queue of pending continuations. The core also provides bind (exported as >>=), sequencing notation, and running under a handler.
 - Failure catching, built on the core.
-- One module per standard effect. The state effect (read, write and update a value by key on a caller-owned store) is one of them; it has no library handler, and the user's handler answers its descriptions.
+- One module per standard effect. The state effect (read, write and update a value by key on a caller-owned store) is one of them; it has no library handler, and the user's handler answers its descriptions. The task effects (spawn, await and poll) are another; unlike the others they come with library handler helpers.
+- Task handler helpers, the library's only impure code: a parallel handler that runs each spawned task on a Racket thread, a sequential handler that runs tasks inline at their first await for deterministic tests, and a lock wrapper that makes a stateful single-shot handler safe when tasks share it. Shipped under the amendment to [[file:decisions/0003-pure-and-effectful-code.org][decision 0003]].
 
 * Data flow
 Binding a waiting computation adds a function to its queue at constant cost. Resuming takes functions from the queue until the next effect, so cost does not grow with nesting. See [[file:features/queue-based-bind.org][queue-based bind]].
 
 * Effects
-None in the library itself. Handlers come from callers.
+None in the library's pure modules. Handlers come from callers; =task-handlers.rkt= is the one impure exception, shipping handler helpers that perform the threads and semaphores the task effects describe, as the amendment to [[file:decisions/0003-pure-and-effectful-code.org][decision 0003]] allows.

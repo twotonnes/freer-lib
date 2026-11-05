@@ -60,7 +60,9 @@ Module @racketmodname[freer-lib/effects/abort-effect] (documented under Standard
 
 @subsection{try and catch}
 
-Module @racketmodname[freer-lib/try-catch] (documented under Standard Effects). @racket[try] treats a @racket[#f] result as a failure. When the computation returns @racket[#f], @racket[try] signals an internal failure that carries the fallback computation. @racket[catch] intercepts that failure, discards the rest of the enclosed computation, and runs the fallback instead.
+Module @racketmodname[freer-lib/try-catch] (documented under Standard Effects). @racket[try] treats a @racket[#f] result as a failure. When the computation returns @racket[#f], @racket[try] performs a @racket[try-failure-effect] that carries the fallback computation. @racket[catch] intercepts that failure, discards the rest of the enclosed computation, and answers the fallback instead.
+
+A task boundary intercepts @racket[try-failure-effect] too: a failure inside a spawned task stays in the task's outcome and does not reach the parent's @racket[catch]. See @secref["Tasks"] for the task effects and their outcomes.
 
 @examples[#:eval err-eval
   (run (catch

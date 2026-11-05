@@ -72,6 +72,25 @@ The core API defines the structure of effectful computations and the machinery t
   ]
 }
 
+@defproc[(sequence [l (listof free?)])
+         free?]{
+  Turns a list of effectful computations into a single computation that produces a list of their results, in the same order as @racket[l]. Each computation in @racket[l] runs in sequence: the next one starts only after the previous one has produced a value.
+
+  @examples[#:eval freer-lib-eval
+    (sequence (list (return 1) (return 2) (return 3)))
+  ]
+}
+
+@defproc[(map-m [proc (-> any/c free?)]
+                [l (listof any/c)])
+         free?]{
+  Applies @racket[proc] to each element of @racket[l] in order and collects the results into a list. Each application is an effectful computation, so effects are performed one element at a time, left to right. This is equivalent to composing @racket[sequence] with a @racket[map] of @racket[proc] over @racket[l], but it also works over effectful functions.
+
+  @examples[#:eval freer-lib-eval
+    (map-m (lambda (n) (return (* 2 n))) '(1 2 3))
+  ]
+}
+
 @defproc[(run [m free?]
               [handle (-> any/c (-> any/c free?) free?)])
          any/c]{
@@ -80,18 +99,18 @@ The core API defines the structure of effectful computations and the machinery t
   When @racket[run] encounters a @racket[pure] value, it returns the unwrapped value. When it encounters an @racket[impure], it extracts the effect description and continuation, then passes them to @racket[handle] as separate arguments. The handler can process the effect and resume the computation by calling the continuation @racket[k], or it can return a new computation to continue execution.
 
   @examples[#:eval freer-lib-eval
-    (struct read-env (var-name))
+    (struct read-home (var-name))
     
     ;; A computation that asks for an environment variable
     (define my-computation
-      (do-m [path <- (perform (read-env "HOME"))]
+      (do-m [path <- (perform (read-home "HOME"))]
           (return (string-append "Home is: " path))))
     
     ;; Running the computation with a handler
     (run my-computation
          (lambda (eff k)
            (match eff
-             [(read-env var)
+             [(read-home var)
               ;; Resume the continuation 'k' with a simulated value
               (k "/usr/home/racket-user")])))
   ]

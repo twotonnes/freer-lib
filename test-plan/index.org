@@ -6,6 +6,7 @@ implement its cases, and the plan says which spec requirement each case verifies
 * Contents
 - [[file:features/][Features]]: one test plan per feature.
   - [[file:features/state-effect.org][State effect]]
+  - [[file:features/concurrency.org][Concurrency and parallelism]]
 - [[file:templates/][Templates]]: the template for a new test plan.
 - [[file:../design/index.org][Design]] and [[file:../detailed-design/index.org][detailed design]]: the specs and designs the plans are based on.
 

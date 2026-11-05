@@ -1,0 +1,299 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-11-04
+:SPEC: ../../design/features/concurrency.org
+:DETAILED_DESIGN: ../../detailed-design/features/concurrency.org
+:END:
+#+TITLE: Concurrency and parallelism: test plan
+
+Tests for the task effects (=spawn=, =await=, =poll=), the fork/join
+operations (=map-par=, =run-par=, =collect-par=), and the three handler
+helpers; 43 cases. Specification:
+[[file:../../design/features/concurrency.org][concurrency spec]], detailed
+design: [[file:../../detailed-design/features/concurrency.org][concurrency
+detailed design]].
+
+Cases live next to the procedures tested: cases 1-10 in the =(module+ test)=
+block of =effects/task-effect.rkt=, cases 11-43 in the =(module+ test)= block
+of =task-handlers.rkt= (they need a running handler, and =task-handlers.rkt=
+already requires =task-effect.rkt=). Once accepted, the numbers are the
+approved ones.
+
+* Fixture
+
+Defined once in the =task-handlers.rkt= test block, in the style of the
+=state-effect.rkt= fixtures:
+
+- =counting-handler!= — single-shot base handler that counts each description
+  it answers and returns a recorded value; used to observe how often a task
+  really ran and that =poll= runs nothing.
+- =echo-handler= — single-shot base handler answering each description with a
+  fixed value; used for delegation cases.
+- =make-dup-handler= — resumes =k= twice with the same value; the multi-shot
+  variant for case 21.
+- =wait/post= semaphore descriptions — a base handler that blocks on ='wait-go=
+  and posts on ='post-go=; deterministic blocking without sleeps.
+- =locked-store-handler!= — stateful single-shot handler over a mutable box,
+  wrapped by =make-locked-handler= for the lock cases.
+- =fresh-store-factory= — makes a new store and state handler per call, for
+  the =#:fresh= cases.
+- =thread-recording-handler= — single-shot base handler that records
+  =(current-thread)= as it answers, for case 43.
+- A rich parity program using spawn/await/poll, =map-par=, =collect-par= and a
+  failing task, run under both handlers for case 33.
+
+* Cases
+
+** Building descriptions (pure)
+
+1. =spawn=: should build a waiting computation when given a computation.
+   Given a computation =m=, When evaluating =(spawn m)=, Then it is a =free?=
+   value whose description is =(spawn-effect m)= (by =check-match=) and no
+   handler has been called.
+2. =await=: should build a waiting computation when given a handle. Given a
+   handle, When =(await h)=, Then it is a =free?= value whose description is
+   =(await-effect h)= and no handler has been called.
+3. =poll=: should build a waiting computation when given a handle. Given a
+   handle, When =(poll h)=, Then it is a =free?= value whose description is
+   =(poll-effect h)= and no handler has been called.
+4. =map-par=: should build a computation that starts with a spawn when given a
+   non-empty list. Given =f= and a non-empty list, When =(map-par f xs)=, Then
+   it is a =free?= value whose head description is a =spawn-effect=.
+5. =run-par=: should build a computation that starts with a spawn when given a
+   non-empty list. Given a non-empty list of computations, When =(run-par ms)=,
+   Then it is a =free?= value whose head description is a =spawn-effect=.
+6. =map-par=: should answer the empty list purely when given no elements.
+   Given the empty list, When =(map-par f '())=, Then it equals =(pure '())=.
+7. =run-par=: should answer the empty list purely when given no elements.
+   Given the empty list, When =(run-par '())=, Then it equals =(pure '())=.
+8. =collect-par=: should answer the values without performing any effect when
+   all outcomes succeed. Given a list of =task-success= outcomes, When
+   running =(collect-par outcomes)= under a counting handler, Then the
+   counter stays 0 and the values are answered in order.
+9. =collect-par=: should perform the parent failure when an outcome fails.
+   Given outcomes containing a =task-failure=, When =(collect-par outcomes)=,
+   Then it matches =(impure (try-failure-effect _) _ _)= carrying the failing
+   task's value as its fallback.
+10. =collect-par=: should raise a plain =exn:fail= when given a non-outcome.
+    Given a list containing something that is not a =task-success= or
+    =task-failure=, When =(collect-par outcomes)=, Then it raises =exn:fail=
+    without performing any effect.
+
+** Spawn and await under handlers
+
+11. =spawn= then =await=: should answer the task's value under both handlers.
+    Given a task answering 41, When spawning and awaiting it under the
+    parallel and the sequential handler, Then both answer =(task-success 41)=.
+12. =spawn= then =await=: should let the parent use the task's value. Given a
+    task answering 41, When the parent awaits it, unwraps the success and
+    adds 1, Then =run= answers 42 under both handlers.
+13. task handler delegation: should answer a non-task effect inside a task
+    with the wrapped handler's answer. Given a task that performs an
+    =echo-handler= effect answered with 7, When awaited under both handlers,
+    Then the outcome is =(task-success 7)=.
+14. failing task: should keep the failure in the outcome, out of the parent's
+    =catch=. Given a task =(try (return #f) (return 'oops))=, When awaited
+    under both handlers, Then the outcome is =(task-failure 'oops)=; and When
+    the whole spawn/await program is wrapped in =catch=, Then it answers
+    =(task-failure 'oops)= — had the failure leaked, =catch= would answer
+    ='oops=.
+15. failing task with an effectful fallback: should answer the fallback's
+    effectful value. Given a task failing with a fallback that performs an
+    =echo-handler= effect answered with 9, When awaited under both handlers,
+    Then the outcome is =(task-failure 9)=.
+16. task answering =#f=: should be a success, not a failure. Given a task
+    answering =#f=, When awaited under both handlers, Then the outcome is
+    =(task-success #f)=.
+
+** Repeated await and poll
+
+17. =await= twice: should answer the same outcome twice without re-running.
+    Given a spawned task whose body performs one counted effect, When the
+    parent awaits the same handle twice, Then both answers are the same
+    outcome and the count is 1, under both handlers.
+18. =poll= then =await= under sequential: should answer =task-running= before
+    the run and the outcome after. Given a spawned, not yet run task, When
+    polled, Then it answers =(task-running)= and the task has not run; When
+    awaited, Then it answers the outcome and a second poll answers the same
+    outcome.
+19. =poll= under parallel: should answer =task-running= while blocked and the
+    outcome once finished. Given a task whose body blocks on ='wait-go=, When
+    polled, Then it answers =(task-running)=; When ='post-go= is performed and
+    the thread finishes, Then a second poll answers the outcome.
+20. =poll= inside =catch=: should answer =task-running= rather than being
+    consumed. Given a spawned, unrun task under the sequential handler, When
+    =(catch (do-m [h <- (spawn m)] [o <- (poll h)] (return o)))= is run, Then
+    it answers =(task-running)= — the still-running indication is ordinary
+    data, not a failure a =catch= could swallow.
+21. multi-shot =await=: should answer the same outcome to each branch. Given a
+    handler that resumes =k= twice with the same handle and a task whose body
+    performs one counted effect, When awaited, Then both branches receive the
+    same outcome and the count is 1 (sequential, for determinism).
+
+** Sequential determinism
+
+22. sequential =poll=: should not run the task. Given a spawned task whose
+    body performs a counted effect, When polled under the sequential handler,
+    Then it answers =(task-running)= and the count is 0; When then awaited,
+    Then the outcome is answered and the count is 1.
+23. =await=: should wait for a later task. Given task 1 blocked on ='wait-go=
+    and task 2 performing ='post-go=, When the parent awaits task 2 and then
+    task 1 under both handlers, Then both outcomes are answered — the first
+    =await= waits until the blocker is released (semaphores, no timing).
+
+** Fork/join
+
+24. =map-par=: should answer outcomes in input order. Given a list of distinct
+    values and a computation-producing function, When =(map-par f xs)= is run
+    under both handlers, Then the outcomes are the successes of the values in
+    list order.
+25. =map-par=: should answer ='()= for the empty list under both handlers.
+26. =run-par=: should answer outcomes in input order. Given a list of
+    computations with distinct answers, When =(run-par ms)= is run under both
+    handlers, Then the outcomes appear in the given order.
+27. =run-par=: should answer ='()= for the empty list under both handlers.
+28. =run-par=: should answer mixed outcomes in order. Given [success 1,
+    failure 'bad, success 3], When run under both handlers, Then the outcomes
+    are =(task-success 1)=, =(task-failure 'bad)=, =(task-success 3)=.
+29. failing middle task: should let siblings run to completion. Given three
+    tasks where the middle one fails and the siblings perform counted effects
+    through a shared handler (wrapped by =make-locked-handler= under
+    parallel), When =(run-par ms)= is run under both handlers, Then all three
+    outcomes are answered and both siblings' effects were observed —
+    nothing is cancelled.
+30. nested =spawn=: should nest outcomes. Given a task that spawns a sub-task
+    answering =v= and awaits it, When awaited under both handlers, Then the
+    outcome is =(task-success (task-success v))=.
+
+** The convenience
+
+31. =collect-par=: should answer the values when all outcomes succeed. Given
+    =(map-par f xs)= with all successes, When collected under both handlers,
+    Then the values are answered in order.
+32. =collect-par=: should answer the leftmost failing value under =catch=.
+    Given outcomes where the second of three fails, When
+    =(catch (collect-par outcomes))= is run under both handlers, Then it
+    answers that task's failure value; without =catch= the failure description
+    reaches the base handler.
+
+** Parity and delegation
+
+33. parity: should answer the same outcomes under both handlers. Given one
+    program using spawn/await/poll, =map-par=, =collect-par= and a failing
+    task, When run under the parallel and the sequential handler, Then the
+    results are equal.
+34. task handlers: should delegate unknown parent descriptions to the wrapped
+    handler. Given a description no task handler knows, performed by the
+    parent (not inside a task), When run under both handlers, Then the wrapped
+    handler answers it.
+
+** Lock wrapper
+
+35. =make-locked-handler=: should give the same final state and results as
+    sequential. Given a stateful single-shot handler wrapped by
+    =make-locked-handler= and many concurrent tasks performing counted state
+    effects, When run under the parallel handler, Then the final state and the
+    results equal those of the same run under the sequential handler.
+36. =make-locked-handler=: should serialise the answer, not the continuation.
+    Given =N= tasks that each perform ='reserve= (the locked handler records
+    and posts =go= when the reserve count reaches =N=) and whose continuations
+    wait on =go= before performing ='release=, When run under the parallel
+    handler, Then the run completes with reserve count =N= — the continuations
+    overlapped inside the lock, so a wrapper holding the lock through
+    continuations would deadlock instead (continuations use
+    =(sync/timeout 5.0 go)= so a bad implementation fails rather than hangs).
+37. =make-locked-handler=: should release the lock when the wrapped handler
+    raises. Given a wrapped handler that raises on a description, When two
+    tasks perform it, Then the exception propagates and the second task still
+    acquires the lock — no deadlock.
+38. =make-locked-handler=: should raise a plain =exn:fail= when the wrapped
+    handler is not single-shot. Given a wrapped handler that never resumes
+    =k=, and one that resumes =k= twice, When an effect is performed through
+    the wrapper, Then both raise =exn:fail=.
+
+** Fresh handler per task
+
+39. =#:fresh=: should isolate handler state between tasks. Given a =#:fresh=
+    factory making a new store and handler per task, When tasks perform state
+    effects, Then no task observes another's state; and given one shared
+    handler instance instead, Then the tasks do share state (sequential, for
+    determinism; the fresh case also under parallel).
+40. =#:fresh=: should exist on both constructors. Given the same program run
+    with =#:fresh= factories under both handlers, Then the outcomes are equal
+    to the shared-instance run's outcomes.
+
+** Exceptions and handles
+
+41. exceptions: should re-raise at the parent's =await=. Given a task whose
+    body raises =(raise 'sym)=, When awaited under both handlers, Then =run=
+    re-raises ='sym=; under parallel, a =poll= on the finished handle also
+    re-raises it.
+42. =task-handle?=: should recognise handles answered by =spawn=. Given a
+    spawned task under both handlers, When the parent resumes with the handle,
+    Then =task-handle?= accepts it.
+
+** Where the work runs
+
+43. parallel handler: should run the task's work on the task's thread, not
+    the parent's. Given a base handler that records =(current-thread)= when
+    answering and a task performing one effect through it, When run under the
+    parallel handler, Then the recorded thread differs from the parent's
+    =(current-thread)= — the work described in the task ran in the task; under
+    the sequential handler, Then the recorded thread is the parent's (the body
+    runs inline).
+
+* Coverage
+
+| Spec item            | Cases / check                                    |
+|----------------------+--------------------------------------------------|
+| R1 task effects      | 1-3, 11-12, 18-19, 23                            |
+| R2 outcomes, failures stay in task | 14, 15, 16                         |
+| R3 stable handles    | 17, 18, 21                                       |
+| R4 fork/join, order  | 4-7, 24-28                                       |
+| R5 convenience       | 8-10, 31, 32                                     |
+| R6 parallel handler  | parallel variants of 11-19, 34, 43                |
+| R7 sequential parity | 18, 20, 22, 23, 33                                |
+| R8 lock wrapper      | 35-38                                            |
+| R9 fresh handlers    | 39, 40                                           |
+| R10 memory safety    | 35, 36; by inspection: no shared mutable hash tables in the helpers |
+| R11 unchanged APIs   | =make test= on the untouched suite; no exported name removed or changed |
+
+| Acceptance criterion | Cases / check                          |
+|----------------------+----------------------------------------|
+| (a) spawn→await→use, both handlers | 11, 12, 13                  |
+| (b) failure in outcome, parent catch blind | 14, 15                 |
+| (c) stable outcomes, no re-run, multi-shot | 17, 18, 21              |
+| (d) sequential poll determinism | 18, 20, 22                     |
+| (e) order under both handlers | 24-27                          |
+| (f) siblings finish on failure | 29                              |
+| (g) convenience and default | 8-10, 31, 32                        |
+| (h) locked handler parity | 35                                   |
+| (i) answer serialised, continuation not | 36                      |
+| (j) non-single-shot documented | 38; documentation by inspection   |
+| (k) fresh isolation | 39                                        |
+| (l) existing suite unchanged | =make test=, no name changes         |
+| (m) exports documented | by inspection of scribblings and re-exports |
+
+Checks that exist only because of the detailed design:
+
+| Design decision                  | Cases / check                        |
+|----------------------------------+--------------------------------------|
+| =task-running= is a distinct value, not a failure | 20 |
+| work described in a task runs on the task thread, not the parent | 43 |
+| =#f= task value is a success     | 16                                   |
+| =catch= answers the outcome, not the fallback | 14                     |
+| try-catch rename keeps =try=/=catch= behaviour | existing suite (l)             |
+| only =task-handle?= exported     | by inspection                        |
+
+* Open questions
+
+- Case 36's =(sync/timeout 5.0 go)= trades robustness against a hang: on a
+  very loaded machine 5 seconds could flake. If it ever does, the timeout is
+  the one constant to revisit; the semaphore discipline itself is
+  deterministic.
+
+* Related
+
+- Specification: [[file:../../design/features/concurrency.org][concurrency spec]]
+- Detailed design: [[file:../../detailed-design/features/concurrency.org][concurrency detailed design]]
+- [[file:./state-effect.org][state-effect test plan]] — fixture and case style

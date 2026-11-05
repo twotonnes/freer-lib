@@ -2,31 +2,32 @@
 
 (provide
     try
-    catch)
+    catch
+    (struct-out try-failure-effect))
 
 (require
     racket/match
     racket/bool
     "freer-monad.rkt")
 
-(struct failure-effect (fallback))
+(struct try-failure-effect (fallback) #:transparent)
 
 ;; Type: (-> Free Free Free)
 (define (try computation fallback)
     (do-m
         [value <- computation]
         (if (false? value)
-            (perform (failure-effect fallback))
+            (perform (try-failure-effect fallback))
             (return value))))
 (module+ test
     (require rackunit)
 
-    (test-case "try: returns failure-effect when computation returns #f"
+    (test-case "try: returns try-failure-effect when computation returns #f"
         (define result
             (run (try (return #f) (return 'fallback))
                  (lambda (eff k)
                     (match eff
-                        [(failure-effect fb) fb]
+                        [(try-failure-effect fb) fb]
                         [_ (error (format "the effect handler was called with ~v" eff))]))))
         (check-equal? result 'fallback))
 
@@ -35,7 +36,7 @@
             (run (try (return 'success) (return 'fallback))
                  (lambda (eff k)
                     (match eff
-                        [(failure-effect fb) fb]
+                        [(try-failure-effect fb) fb]
                         [_ (error (format "the effect handler was called with ~v" eff))]))))
         (check-equal? result 'success))
 
@@ -48,7 +49,7 @@
         (check-equal? (run (try (return "") (return 'fallback)) no-effects) "")
         (check-equal? (run (try (return '()) (return 'fallback)) no-effects) '()))
 
-    (test-case "try: should perform the failure-effect with an effectful fallback when computation returns #f"
+    (test-case "try: should perform the try-failure-effect with an effectful fallback when computation returns #f"
         ;; Given
         (define result-of-try (try (return #f) (perform 'fallback-effect)))
 
@@ -57,7 +58,7 @@
             (run result-of-try
                  (lambda (eff k)
                     (match eff
-                        [(failure-effect fb) (return fb)]
+                        [(try-failure-effect fb) (return fb)]
                         [_ (error (format "the effect handler was called with ~v" eff))]))))
 
         ;; Then
@@ -67,7 +68,7 @@
 (define (catch computation)
     (match computation
         [(pure value) (return value)]
-        [(impure (failure-effect fallback) _ _) fallback]
+        [(impure (try-failure-effect fallback) _ _) fallback]
         [(impure eff k _) (>>= (perform eff) (lambda (value) (catch (k value))))]))
 
 (module+ test
@@ -185,13 +186,13 @@
 (module+ test
     (require rackunit (submod "freer-monad.rkt" test test-support))
 
-    (test-case "catch: should return the fallback unchanged when the first effect is a failure-effect"
+    (test-case "catch: should return the fallback unchanged when the first effect is a try-failure-effect"
         (define fb (return 'fb))
-        (check-eq? (catch (perform (failure-effect fb))) fb))
+        (check-eq? (catch (perform (try-failure-effect fb))) fb))
 
-    (test-case "catch: should discard the pending functions when the failure-effect has pending binds"
+    (test-case "catch: should discard the pending functions when the try-failure-effect has pending binds"
         (define c
-            (>>= (perform (failure-effect (return 'fb)))
+            (>>= (perform (try-failure-effect (return 'fb)))
                  (lambda (_) (error "must not run"))))
         (check-equal? (run (catch c) (lambda (d k) (error "handler should not be called"))) 'fb))
 

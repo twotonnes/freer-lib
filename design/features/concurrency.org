@@ -1,0 +1,75 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-11-03
+:END:
+#+TITLE: Concurrency and parallelism
+
+* Summary
+Task effects that let a program describe concurrent work — `spawn` starts a sub-computation and answers a handle, `await` waits for its outcome, `poll` checks it without blocking — plus library handler helpers that run the tasks on Racket's parallel threads, including a deterministic sequential handler for tests. The goals are speed, by running independent sub-computations (for example mapping a computation over many entities) in parallel, and long-running background tasks that a game loop can check once per frame.
+
+* Scope
+** In scope
+- Three task effects that build computations: spawn a computation and answer a task handle; await a handle, blocking until the task's outcome is ready; poll a handle, answering its outcome or a "still running" indication without blocking.
+- A task outcome: success with a value, or failure with the error or failure value. A failure inside a task stays in its outcome; it does not reach the parent's =catch=.
+- Fork/join operations built on the task effects: map a computation-producing function over a list in parallel, and run several given computations in parallel; both await all tasks and answer the outcomes in the order of their inputs.
+- An optional convenience that turns any failure among a run's outcomes into a parent failure. The default answers all outcomes to the parent, which decides.
+- Handler helpers, shipped by the library: a parallel task handler wrapping a caller's handler; a sequential task handler where spawn runs the task to completion; a lock wrapper making a stateful handler safe for concurrent use; and an option for each spawned task to run under its own fresh handler instance.
+- The same program runs unchanged under either the parallel or the sequential task handler.
+
+** Out of scope
+- Message passing or channels between running tasks.
+- Cancelling a running task. When one branch fails, its siblings are allowed to finish; the parent receives all outcomes.
+- Beehive's ECS parallel-systems design; that is a later beehive spec.
+- Changing any existing API. This is a backward-compatible addition, released as a minor version under [[file:../decisions/0002-versioning-strategy.org][decision 0002]].
+
+* Requirements
+1. =spawn m= answers a task handle and describes starting =m= concurrently; it does not run anything by itself. =await handle= answers the task's outcome, waiting until the task has finished. =poll handle= answers the outcome if the task has finished, or a still-running indication if it has not, without waiting.
+2. A task's outcome is either success with the task's final value, or failure with its error or failure value. A failure effect performed inside a task is caught by the task's own outcome and does not reach the parent's =catch=; the failure machinery is the existing one from the failure-catching module.
+3. Awaiting or polling a handle whose task has finished answers the same outcome each time, without re-running the task. A multi-shot continuation that awaits the same handle twice gets the same outcome twice. Awaiting a task that is still running waits; polling it answers the still-running indication and the program continues.
+4. The parallel map operation, given a computation-producing function and a list, spawns one task per element, awaits them all, and answers the outcomes in the order of the list. The multi-computation operation does the same for the computations it is given. Both are built only from the task effects and the existing core; they add no new effects of their own.
+5. The optional convenience operation takes the outcomes of a parallel run and either answers the successful values, or performs a failure in the parent if any outcome is a failure. Using it is a choice; the default behaviour answers all outcomes to the parent.
+6. The parallel task handler wraps a caller-supplied handler: it answers spawn by running the task under the composed handler on a parallel thread, await by waiting for the task's thread, and poll by checking whether that thread has finished, and answers every other effect description by delegating to the wrapped handler.
+7. The sequential task handler answers spawn by recording the task without running it, so the program describes the same work under it as under the parallel handler. Await runs the recorded task to completion. Poll answers the still-running indication for a task that has not yet run, and the task's outcome once it has. A program written against the task effects gives the same outcomes, in the same order, under the sequential handler as under the parallel handler, except where the program itself depends on real-world timing.
+8. A lock wrapper takes a single-shot handler — one that answers each effect by resuming =k= exactly once with a value, as the ECS handler in beehive does — and answers a handler that is safe when several tasks call it at once. It holds the lock while the wrapped handler runs its answer, and hands the lock back before it resumes =k=, so the stateful answer is serialised while the pure continuation code that follows the effect is not. For handlers that are not single-shot — ones that answer by returning a computation, or that resume =k= more than once — the wrapper is not defined, and requirement 9's fresh handler per task is the supported way to run them concurrently.
+9. Each spawned task can be given its own fresh instance of a handler, so tasks do not share handler state unless the caller shares it.
+10. The parallel task handler does not assume Racket's mutable hash tables are safe under parallel threads; the library's own handler helpers use only what is safe, and the lock wrapper (requirement 8) is the documented way to make a caller's handler that uses them safe.
+11. All existing APIs are unchanged, and the task effects, fork/join operations, and handler helpers are available through the library's existing entry points and documented in the reference documentation.
+
+* Architecture fit
+- Two new pieces among the library's parts: one more standard effect (the task effects) in the style of the existing per-effect modules, and handler helpers, which are allowed by the amendment to [[file:../decisions/0003-pure-and-effectful-code.org][decision 0003]]: the library stays pure, handlers perform effects, and the library may ship handler helpers.
+- The task effects and the fork/join operations are pure: they build computations that describe spawning, awaiting, and polling. The parallel and sequential handlers are the effectful part; they perform the threads. The lock wrapper adds no effects; it makes a caller's handler safe for concurrent use.
+- Failures follow decision 0003: a failure inside a task means incorrect program state and lands in the task's outcome. Exceptions from misuse of the API propagate as today.
+- No contracts are added ([[file:../decisions/0001-no-contracts.org][decision 0001]]). The release is a minor version bump ([[file:../decisions/0002-versioning-strategy.org][decision 0002]]).
+
+* Acceptance criteria
+- [ ] A program that spawns a computation, awaits it, and uses its value gives the expected value under both the parallel and the sequential task handler (requirements 1, 6, 7).
+- [ ] A task that performs a failure effect has that failure in its outcome; the parent's =catch= does not see it; the parent can observe the failure by inspecting the outcome (requirement 2).
+- [ ] Awaiting a finished task twice, and polling then awaiting, answer the same outcome without re-running the task; a handler that resumes a continuation twice with the same handle gets the same outcome twice (requirement 3).
+- [ ] Polling a task that has not yet run answers the still-running indication immediately, without running the task; after the task is awaited, polling answers its outcome. Both are checked under the sequential handler, where a spawned task stays unrun until await, so the test is deterministic (requirement 7).
+- [ ] The parallel map answers outcomes in the order of the input list, and the multi-computation operation answers them in the order given, under both handlers (requirements 4, 7).
+- [ ] When one task among several fails, its siblings still run to completion, and all outcomes are answered (Scope, out of scope: no cancellation) — checked with a run whose failing task is order-dependent (requirement 4, 5).
+- [ ] The convenience operation answers the successful values when all outcomes succeed, and performs a failure in the parent when any outcome fails; the default path answers all outcomes (requirement 5).
+- [ ] A single-shot stateful handler wrapped with the lock wrapper, run under the parallel task handler over many concurrent tasks, gives the same final state and results as the same run under the sequential handler (requirements 7, 8, 10).
+- [ ] The lock wrapper serialises the wrapped handler's answer but not the continuation: a program whose wrapped handler answers quickly but whose continuation code runs long shows the continuation parts of separate tasks overlapping (requirement 8).
+- [ ] The lock wrapper is documented as not defined for handlers that are not single-shot; such handlers run concurrently through a fresh handler per task instead (requirements 8, 9).
+- [ ] Tasks given fresh handler instances do not observe each other's handler state; tasks sharing one handler instance do (requirement 9).
+- [ ] The existing test suite passes unchanged; no existing exported name changes (requirement 11, Scope).
+- [ ] The task effects, fork/join operations, and handler helpers are exported and documented, by inspection (requirement 11).
+
+* Open questions
+- The exact shape of the still-running indication for =poll= (a distinct value versus a failure with a marker) is left to the detailed design.
+
+* Next steps
+1. Detailed design: [[file:../../detailed-design/features/concurrency.org][concurrency]] — settles the still-running indication, the task-handle and outcome shapes, the module layout, and how the handler helpers compose with a caller's handlers.
+2. Test plan: [[file:../../test-plan/features/concurrency.org][concurrency]] — once the detailed design exists.
+3. Implementation of the library changes, then the minor version release (decision 0002).
+4. A separate beehive spec for parallel ECS systems (per-branch write buffers merged at the join point), once freer-lib supports the task effects.
+
+* Related
+- [[file:../architecture.org][Architecture]].
+- [[file:../decisions/0003-pure-and-effectful-code.org][0003. Pure and effectful code]], including its amendment on library handler helpers.
+- [[file:../decisions/0002-versioning-strategy.org][0002. Versioning strategy]] (minor release).
+- [[file:../decisions/0001-no-contracts.org][0001. No runtime contracts]].
+- [[file:queue-based-bind.org][Queue-based bind]] for the cost model of resuming; [[file:state-effect.org][state effect]] for the style of a standard effect module.
+- Detailed design: [[file:../../detailed-design/features/concurrency.org][concurrency]] (to be written once accepted).
+- Test plan: [[file:../../test-plan/features/concurrency.org][concurrency]] (to be written once the spec and detailed design are accepted).

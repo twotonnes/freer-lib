@@ -1,13 +1,15 @@
 #+TITLE: Code architecture
 
 * Module table
-Matches the code as built for [[file:features/queue-based-bind.org][queue-based bind]] (implemented).
+Matches the code as built for [[file:features/queue-based-bind.org][queue-based bind]] (implemented) and [[file:features/concurrency.org][concurrency]] (implemented).
 
 | Module | Role | Notes |
 |--------+------+-------|
 | =freer-monad.rkt= | Core of the library: =pure=, =impure=, =perform=, =return=, =>>== (the exported name of the internal =bind=), =run=, =do-m=, =sequence=, =map-m= | Pure. =impure= has three fields: description, continuation, queue. Exports only =pure=, =impure=, =free?=, =return=, =perform=, =run=, =>>==, =do-m=, =sequence=, =map-m=. Internal: =leaf= and =node= (queue structures, opaque), =bind=, =make-impure=, =resume=, =q-append=, =q-pop= |
-| =try-catch.rkt= | =try= and =catch= on the failure effect | Pure. =catch= builds its waiting clause with =perform= and =>>== |
+| =try-catch.rkt= | =try= and =catch= on the failure effect | Pure. The failure description is the exported, transparent =try-failure-effect=; =collect-par= performs it to fail the parent. =catch= builds its waiting clause with =perform= and =>>== |
 | =effects/state-effect.rkt= | State effect: =read-state-effect= and =write-state-effect= records, =read-state=, =write-state=, =update-state=, =make-state-store= | Operations are pure; =make-state-store= is impure (allocates a mutable =hasheq=, raises plain =exn:fail= on a duplicate seed key). No library handler; the test handler is in the module's test block. Re-exported by =effects/main.rkt= |
+| =effects/task-effect.rkt= | Task effects: =spawn-effect=, =await-effect= and =poll-effect= records, =spawn=, =await=, =poll=, =map-par=, =run-par=, =collect-par=, and the outcome structs =task-success=, =task-failure=, =task-running= | Pure. Operations build with =perform=; =collect-par= performs =try-failure-effect= for the parent's failure and raises plain =exn:fail= on a non-outcome. No library handler for these effects lives here (see =task-handlers.rkt=). Re-exported by =effects/main.rkt= |
+| =task-handlers.rkt= | Task handlers: =make-parallel-task-handler=, =make-sequential-task-handler=, =make-locked-handler=, =task-handle?= | Impure, the library's only impure module. The parallel handler runs each spawned task on a Racket thread and waits at await; the sequential handler records spawns and runs each task inline at its first await; the lock wrapper serialises a single-shot handler's answer with a semaphore and raises =exn:fail= on non-single-shot use. Task handles are opaque; state lives in the handles, with no shared mutable hash tables. Re-exported by =main.rkt= |
 | =effects/*.rkt= | One module per effect: its description, its constructor, and its tests | Pure. Each builds effects with =perform= |
 
 * Data flow
@@ -18,4 +20,4 @@ Matches the code as built for [[file:features/queue-based-bind.org][queue-based 
 - =run= drives this loop until a pure value is returned.
 
 * Effects
-None. The library performs no effects and holds no state. Handlers perform effects and are supplied by callers; a handler of a read-write effect owns its storage, and its caller owns the store ([[file:../design/decisions/0003-pure-and-effectful-code.org][decision 0003]]).
+None in the pure modules. =task-handlers.rkt= is the one impure module: its handler helpers perform the threads and semaphores the task effects describe, shipped under the amendment to [[file:../design/decisions/0003-pure-and-effectful-code.org][decision 0003]]. Every other handler performs effects and is supplied by callers; a handler of a read-write effect owns its storage, and its caller owns the store (decision 0003).

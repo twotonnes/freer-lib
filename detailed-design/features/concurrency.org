@@ -1,0 +1,439 @@
+:PROPERTIES:
+:STATUS: accepted
+:DATE: 2026-11-04
+:SPEC: ../../design/features/concurrency.org
+:END:
+#+TITLE: Concurrency and parallelism: detailed design
+
+* Summary
+
+Tasks are a new standard effect — =spawn=, =await= and =poll= — plus fork/join
+operations built on them, answering task outcomes on Racket's parallel threads.
+The library ships three handler helpers: a parallel task handler, a
+deterministic sequential task handler, and a lock wrapper that makes a
+single-shot caller handler safe under parallel use. The same program runs
+unchanged under either task handler. Specification:
+[[file:../../design/features/concurrency.org][concurrency spec]].
+
+* Modules and procedures
+
+P = pure, I = impure. Handlers perform effects; everything in
+[[file:../../effects/task-effect.rkt][effects/task-effect.rkt]] is pure;
+everything in [[file:../../task-handlers.rkt][task-handlers.rkt]] is impure.
+
+| Requirement | Module                    | Procedure                                            |
+|-------------+---------------------------+------------------------------------------------------|
+| R1          | effects/task-effect.rkt   | spawn, await, poll (P)                               |
+| R1, R6      | task-handlers.rkt         | make-parallel-task-handler (I)                       |
+| R1, R7      | task-handlers.rkt         | make-sequential-task-handler (I)                     |
+| R2          | effects/task-effect.rkt   | task-success, task-failure (P structs)               |
+| R2          | task-handlers.rkt         | task-body-handler (internal)                         |
+| R2          | try-catch.rkt             | try-failure-effect (renamed failure-effect)          |
+| R3          | task-handlers.rkt         | task-handle outcome/done? fields                     |
+| R4          | effects/task-effect.rkt   | map-par, run-par (P)                                 |
+| R5          | effects/task-effect.rkt   | collect-par (P)                                      |
+| R6          | task-handlers.rkt         | make-parallel-task-handler (I)                       |
+| R7          | task-handlers.rkt         | make-sequential-task-handler (I)                     |
+| R8          | task-handlers.rkt         | make-locked-handler (I)                              |
+| R9          | task-handlers.rkt         | #:fresh keyword of both task handlers (I)            |
+| R10         | task-handlers.rkt         | state in handles only; no shared mutable hash tables |
+| R11         | effects/main.rkt, main.rkt | re-exports; scribblings                               |
+
+* Design
+
+** Module layout
+
+Two new pieces, matching the spec's architecture note:
+
+- =effects/task-effect.rkt= — one more module in the one-module-per-standard-effect
+  style. Pure: the three effect descriptions, the operations that perform
+  them, the fork/join operations, and the outcome structs.
+- =task-handlers.rkt= — a new top-level module next to =try-catch.rkt=,
+  impure: the opaque task handle and the three handler helpers. The 2026-10-18
+  amendment to decision
+  [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003-pure-and-effectful-code]]
+  allows the library to ship handler helpers; the library itself stays pure.
+
+Exports of =task-handlers.rkt= are exactly: =task-handle?=,
+=make-parallel-task-handler=, =make-sequential-task-handler= and
+=make-locked-handler=. The handle has no public constructor, accessors or
+mutators: handles are answers of =spawn= under a task handler; forging one is
+API misuse.
+
+** Effect descriptions and pure operations
+
+#+begin_src racket
+;; Type: (define-record-type spawn-effect (computation))
+;; Type: (define-record-type await-effect (handle))
+;; Type: (define-record-type poll-effect (handle))
+;; Type: (-> Free Free) perform spawn-effect
+(define (spawn computation) (perform (spawn-effect computation)))
+;; Type: (-> Any Free) perform await-effect
+(define (await handle) (perform (await-effect handle)))
+;; Type: (-> Any Free) perform poll-effect
+(define (poll handle) (perform (poll-effect handle)))
+#+end_src
+
+Rebellion record types, like the descriptions of the other standard effects.
+=spawn= takes the computation to run; =await= and =poll= take the handle
+answered by =spawn=. All three only build descriptions; running happens in
+handlers.
+
+** Outcomes and the still-running indication
+
+#+begin_src racket
+;; Type: (struct task-success (value) #:transparent)
+;; Type: (struct task-failure (value) #:transparent)
+;; Type: (struct task-running () #:transparent)
+#+end_src
+
+=await= answers a =task-success= or =task-failure=; =poll= answers one of
+those or =task-running=. The failure value is the failed =try='s fallback run
+to a value by the task's handler, so a parent can inspect what went wrong.
+
+The spec left the still-running indication open. It is a distinct value, not a
+failure: a failure-shaped indication would be swallowed by an enclosing =catch=
+before the program's =poll= branch sees it, silently corrupting every
+poll-loop program. =poll='s answer is ordinary data the program branches on.
+
+The outcome structs are transparent so tests can compare them with
+=check-equal?=.
+
+** Fork/join
+
+Built only from the task effects and the existing core, per R4; they introduce
+no effects of their own.
+
+#+begin_src racket
+;; Type: (-> (-> Any Free) (Listof Any) Free)
+(define (map-par f xs)
+  (do-m [hs <- (map-m (λ (x) (spawn (f x))) xs)]
+        [os <- (map-m await hs)]
+        (return os)))
+;; Type: (-> (Listof Free) Free)
+(define (run-par ms)
+  (do-m [hs <- (map-m spawn ms)]
+        [os <- (map-m await hs)]
+        (return os)))
+#+end_src
+
+One task per element, awaited in input order, so outcomes come back in input
+order under both handlers. An empty list answers =(return '())= without
+performing any effect.
+
+Building a computation is not running it. =map-par= applies =f= in the
+parent, but =f= only *describes* each element's work: the =Free= it answers
+is data, and the task handler runs that data on the parallel thread step by
+step — pure continuation code between effects included. The trap is eager
+work wrapped in =return=: =(λ (x) (return (fib x)))= runs =(fib x)= in the
+parent while the description is built — single-threaded — and each task
+merely packages a finished value. Work runs in the task only when it is
+described, not performed, at build time; the reference docs state this at
+=map-par=. The same holds for the computations a caller hands to =run-par=.
+
+** The optional convenience: collect-par
+
+#+begin_src racket
+;; Type: (-> (Listof (U task-success task-failure)) Free)
+(define (collect-par outcomes) ...)
+#+end_src
+
+Left to right: each =task-success= contributes its value; the first
+=task-failure= performs
+
+#+begin_src racket
+(perform (try-failure-effect (return (task-failure-value outcome))))
+#+end_src
+
+so the parent's =catch= answers the leftmost failing task's value; an element
+that is not an outcome is a plain =exn:fail= (API misuse). When all succeed it
+answers the list of values, performing no effect at all. This is the R5
+convenience; the default =map-par=/=run-par= path answers all outcomes and the
+parent decides. =collect-par= needs the renamed =try-failure-effect=
+constructor (below), which is why the rename lands with this feature.
+
+** The handle
+
+#+begin_src racket
+;; Type: (struct task-handle (computation base
+;;                                [thread #:mutable]
+;;                                [outcome #:mutable]
+;;                                [done? #:mutable]))
+#+end_src
+
+Opaque (no =struct-out=). One field per fact the handlers need:
+
+- =computation= — the spawned Free; the sequential handler runs it at =await=.
+- =base= — the per-task base handler, recorded at spawn. Recording at spawn
+  time gives both flavors the same shape: a =#:fresh= base is created exactly
+  once per task, when the task is described, not when it runs.
+- =thread= — the parallel handler's worker thread; =#f= under sequential.
+- =outcome= — =#f= until the task finishes, then its =task-success= or
+  =task-failure=, or a raised value recorded by the body wrapper.
+- =done?= — the finished flag the sequential =poll= and =await= read.
+
+The task handler answers =(k handle)=; a multi-shot continuation resuming =k=
+twice receives the same handle twice and hence the same outcome (R3).
+
+** Body handler and parent-facing handler
+
+Each task runs under a *body handler*; the program's other effects run under
+the *parent-facing handler*. They differ in exactly one clause:
+
+#+begin_src racket
+;; Type: Handler
+;; body = (λ (desc k)
+;;          (cond [(try-failure-effect? desc)
+;;                 (>>= (catch (try-failure-effect-fallback desc))
+;;                      (λ (v) (return (task-failure v))))]
+;;                [(spawn-effect? desc) ...task dispatch...]
+;;                [(await-effect? desc) ...task dispatch...]
+;;                [(poll-effect? desc) ...task dispatch...]
+;;                [else (base desc k)]))
+#+end_src
+
+- Body handler: intercepts =try-failure-effect=. An uncaught failure inside a
+  task stops the task and becomes its =task-failure= outcome instead of
+  reaching the parent's =catch= (R2). The fallback is =catch=-wrapped: a
+  fallback that itself fails answers its own fallback's plain value, so failure
+  values never nest. The fallback's effects go through the body handler, so
+  effectful fallbacks and task effects inside fallbacks work.
+- Parent-facing handler: no failure clause; a parent's failure flows to the
+  base handler as today. Only task descriptions are dispatched, everything
+  else delegates to the base handler (R6, R7).
+- Both dispatch task effects to the same flavor as the outer handler, so tasks
+  nest: a task may spawn and await sub-tasks.
+
+A =catch= inside a task consumes caught failures before the body handler ever
+sees them — unchanged behaviour.
+
+** Parallel handler
+
+#+begin_src racket
+;; Type: (-> Handler [#:fresh (-> Handler)] Handler)
+(define (make-parallel-task-handler base #:fresh [fresh #f]) ...)
+#+end_src
+
+- =spawn=: make the handle with per-task base =((fresh))= when =#:fresh= is
+  given, the shared base otherwise; start a Racket =thread= running the task
+  body — the body runs =m= to a value and records =(task-success v)=, or
+  records the =task-failure= built by the failure clause; the whole body run
+  is wrapped in =(with-handlers ([values (λ (e) e)]) ...)= so a raised value
+  is recorded instead of killing the worker thread. Store the thread in the
+  handle; answer =(k handle)=.
+- =await=: =(thread-wait (task-handle-thread handle))=, then answer the
+  recorded outcome — re-raising it when it is a recorded raise.
+- =poll=: =(thread-dead? (task-handle-thread handle))= — dead answers the
+  recorded outcome (re-raising a recorded raise), alive answers =(task-running)=.
+
+This is R6's wording directly: run the task under the composed handler on a
+parallel thread, =await= waits for that thread, =poll= checks whether it
+finished, everything else delegates to the wrapped handler.
+
+** Sequential handler
+
+#+begin_src racket
+;; Type: (-> Handler [#:fresh (-> Handler)] Handler)
+(define (make-sequential-task-handler base #:fresh [fresh #f]) ...)
+#+end_src
+
+- =spawn=: record the computation and per-task base in the handle; =thread=
+  is =#f=, =done?= is =#f=; answer =(k handle)=. Nothing runs (R7).
+- =await=: if =done?=, answer the stored outcome; otherwise run the same task
+  body inline — synchronously, in the parent's thread — record the outcome,
+  set =done?=, answer it. Raises propagate directly, as today.
+- =poll=: =done?= answers the stored outcome, otherwise =(task-running)=.
+  =poll= never runs an unrun task.
+
+No threads at all. A task runs at its first =await=, in =await= order, so a
+program without real-world timing gets the same outcomes in the same order as
+under the parallel handler (R7). Nested spawns are recorded the same way;
+nested awaits run synchronously.
+
+** Lock wrapper
+
+#+begin_src racket
+;; Type: (-> Handler Handler)
+(define (make-locked-handler wrapped) ...)
+#+end_src
+
+Takes a *single-shot* handler — one that answers each description by resuming
+=k= exactly once with a value — and answers a handler safe when several tasks
+call it at once (R8). The semaphore is created per call: wrap once, share the
+wrapper.
+
+#+begin_src racket
+;; Type: Handler
+;; (λ (desc k)
+;;   (dynamic-wind
+;;     (λ () (semaphore-wait lock))
+;;     (λ () (wrapped desc stand-in-k))
+;;     (λ () (semaphore-post lock)))
+;;   ... then (k answer))
+#+end_src
+
+The trick is the stand-in continuation. The wrapper calls the wrapped handler
+under the lock with a stand-in =k= that records the value it is resumed with
+and answers =(return v)=. The wrapper discards the computation the wrapped
+handler returns, releases the lock, and resumes the *real* =k= with the
+recorded answer. So:
+
+- The stateful answer — everything the wrapped handler does before resuming
+  its =k= — runs under the lock and is serialised across tasks.
+- The continuation — the pure program text after the effect — runs outside the
+  lock, because the stand-in answers trivially and the wrapper's own =k= call
+  happens after release.
+
+Second resume of the stand-in: plain =exn:fail=. Never resumed at all: the
+wrapper raises plain =exn:fail= rather than returning a computation that can
+never produce anything — spec R8 says the wrapper is not defined for
+non-single-shot handlers; the supported way for those is =#:fresh=. Raising
+follows decision 0003 item 5: the library's handler helpers may raise on
+misuse. =dynamic-wind= guarantees the lock is released if the wrapped handler
+raises.
+
+Composes with the task handlers:
+=(make-parallel-task-handler (make-locked-handler stateful-handler))=.
+
+** Fresh handler per task
+
+Both task handler constructors take an optional =#:fresh= keyword, a
+=(-> Handler)= factory. At each =spawn= the task's base is =((fresh))= when
+given, the shared base otherwise (R9). The fresh handler replaces the base for
+that task's non-task effects; callers wanting fresh-over-shared compose the
+factory themselves. Creating it at spawn time keeps the two flavors at parity.
+
+** Failure machinery: the try-catch rename
+
+=try-catch.rkt= currently defines a private =(struct failure-effect
+(fallback))= used by =try= and =catch=. The body handler must intercept those
+descriptions at the task boundary, and =collect-par= must construct one, so
+the struct becomes public under its new name:
+
+#+begin_src racket
+;; Type: (struct try-failure-effect (fallback) #:transparent)
+;; Provided: (struct-out try-failure-effect)
+#+end_src
+
+=try= and =catch= behaviour is unchanged; their internal test patterns are
+renamed in the same change. New public names:
+=try-failure-effect=, =try-failure-effect?=,
+=try-failure-effect-fallback=.
+
+Rejected shapes, recorded so they stay rejected:
+
+- Intercept with =catch=: =catch= erases the success/failure distinction by
+  answering the fallback, so the task boundary cannot tell whether the task
+  failed — a failing task would look like a success carrying its fallback
+  value.
+- Sentinel results through =try=: =try= conflates a =#f= task value with
+  failure, and fallbacks would carry no marker.
+
+No collision with =effects/failure-effect.rkt=: different struct, different
+names, both flow through =main.rkt='s =all-from-out= lines without conflict.
+=benchmark/handlers.rkt= requires the =effects/failure-effect.rkt= struct and
+is unaffected.
+
+** Exceptions
+
+Decision 0003: exceptions signal API misuse and propagate. The parallel body's
+=(with-handlers ([values ...]))= records any raised value — including
+non-exception raises like =(raise 'sym)= — and =await=/=poll= re-raise it at
+the parent's =run=. Under sequential, a raise inside the inline body run
+propagates directly. =run= keeps its today behaviour of letting exceptions
+escape.
+
+** Memory safety of the parallel handler (R10)
+
+The parallel handler does not assume Racket's mutable hash tables are safe
+under parallel threads, and it uses none. All task state lives in the
+handler-allocated =task-handle= structs: each handle is written only by the
+thread that created it — the parent thread fills the spawn-time fields, the
+worker thread records the outcome — and the parent reads the outcome only
+after a sync point (=thread-wait= or =thread-dead?= after thread death), which
+is a memory barrier. The lock wrapper is the documented way to make a caller's
+handler using mutable hash tables safe.
+
+** Misuse (documented, not detected)
+
+- Awaiting in a circle deadlocks, as threads waiting on each other do.
+- Awaiting or polling a handle from another =run= or another handler instance
+  is unchecked and does nothing useful.
+- A task that never finishes hangs its =await=.
+
+** Wiring, docs, release
+
+- =effects/main.rkt=: =(require "task-effect.rkt")= and
+  =(all-from-out "task-effect.rkt")=.
+- =main.rkt=: =(require "task-handlers.rkt")= and
+  =(all-from-out "task-handlers.rkt")=. =try-failure-effect= flows through
+  the existing =try-catch.rkt= =all-from-out= automatically.
+- Scribble: new section documenting the task effects, fork/join, outcomes,
+  and the handler helpers, following the existing per-effect pages.
+- Release: minor bump 1.0.0 → 1.1.0 (decision
+  [[file:../../design/decisions/0002-versioning-strategy.org][0002-versioning-strategy]],
+  backward-compatible addition), CHANGELOG entry under Added, via the
+  bump-version skill at the end of implementation.
+- =detailed-design/architecture.org= and =design/architecture.org= gain the
+  two module rows and a note that the library now ships impure handler helpers
+  in =task-handlers.rkt= — at build time, with the code.
+
+** Files touched
+
+| File                | Change                                                        |
+|---------------------+---------------------------------------------------------------|
+| effects/task-effect.rkt | new: descriptions, spawn/await/poll, map-par, run-par, collect-par, outcome structs |
+| task-handlers.rkt   | new: task-handle, the three handler helpers, #:fresh            |
+| try-catch.rkt       | rename private failure-effect → try-failure-effect, export struct-out, rename internal test patterns |
+| effects/main.rkt    | require + all-from-out task-effect.rkt                        |
+| main.rkt            | require + all-from-out task-handlers.rkt                      |
+| scribblings/        | new task/handler docs section                                 |
+| makefile           | unchanged                                                      |
+
+* Implementation checks
+
+Test plan: [[file:../../test-plan/features/concurrency.org][concurrency test plan]].
+Cases live in the =(module+ test)= blocks of =effects/task-effect.rkt= and
+=task-handlers.rkt=, next to the procedures they test.
+
+| Spec criterion | Check                                                |
+|---------------+------------------------------------------------------|
+| (a) spawn→await→use under both handlers | success + use-the-value + delegation cases, both handlers |
+| (b) failure stays in the outcome | failing-task cases: outcome is task-failure; an enclosing catch answers the outcome, not the fallback value |
+| (c) same outcome without re-running | await-twice and poll-then-await cases with a task-internal effect counter; multi-shot handler resumes k twice with one handle |
+| (d) sequential poll determinism | poll before await answers task-running with the task unrun (counter 0); after await, poll answers the outcome |
+| (e) order under both handlers | map-par and run-par order cases, distinct per-element values, both handlers |
+| (f) siblings finish on failure | failing middle task of a run-par; all outcomes answered; siblings' effects observed |
+| (g) collect-par | all-success answers values; any-failure answers leftmost failing value under catch; default path answers all outcomes |
+| (h) locked handler parity | stateful single-shot handler + lock wrapper, many tasks, parallel vs sequential: same final state and results |
+| (i) lock serialises the answer, not the continuation | N tasks reserve/overlap/complete: reserve counter reaches N proves continuations overlap; sync/timeout fails rather than hangs |
+| (j) non-single-shot documented | by inspection: doc states it, wrapper raises exn:fail; #:fresh is the supported way |
+| (k) fresh handler isolation | #:fresh factories: tasks don't observe each other's state; shared instance shares state |
+| (l) existing suite unchanged | =make test= on untouched modules; no exported name removed or changed |
+| (m) exports documented | by inspection of scribblings and re-export lines |
+
+Checks that exist only because of this design:
+
+- Still-running is a distinct value: poll-loop inside a catch answers
+  task-running rather than losing it (the reason the open question is settled
+  this way).
+- =#f= task value answers =(task-success #f)=, not a failure.
+- try-catch rename: existing try/catch tests pass unchanged in behaviour.
+- Task-handle opacity: only =task-handle?= is exported.
+
+* Open questions
+
+None blocking. The exact scribble page placement (new per-effect page vs a
+combined tasks page) is confirmed against =manual.scrbl= when the docs are
+written.
+
+* Related
+
+- Specification: [[file:../../design/features/concurrency.org][concurrency spec]]
+- Test plan: [[file:../../test-plan/features/concurrency.org][concurrency test plan]]
+- Decision [[file:../../design/decisions/0001-no-contracts.org][0001-no-contracts]] — no runtime contracts; type comments and tests
+- Decision [[file:../../design/decisions/0002-versioning-strategy.org][0002-versioning-strategy]] — minor bump at release
+- Decision [[file:../../design/decisions/0003-pure-and-effectful-code.org][0003-pure-and-effectful-code]] — pure/impure boundary; handler helpers amendment
+- [[file:../architecture.org][Architecture]] — module table and effects updated at build time
+- [[file:./queue-based-bind.org][queue-based-bind detailed design]] — the cost model map-par relies on
+- [[file:./state-effect.org][state-effect detailed design]] — the per-effect-module style this follows
